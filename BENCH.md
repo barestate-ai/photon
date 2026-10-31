@@ -180,3 +180,26 @@ set -a; . ./.env; set +a; BARESTATE_LIVE_META=1 BARESTATE_SPEND_LOG=$PWD/.logs/s
 The DOM runs skip the live case (it needs `BARESTATE_LIVE_META`/`BARESTATE_SPEND_LOG`); the key is loaded only inside the live command. The live case checks the ledger's `total_usd` stays under $40 and this run under $3, and that each live act raised it (a billed model call); this run took it from 0.617345 to 0.623311 (`live4-notes.txt`). Both halves of a pair capture the before and after screenshots, so the delta is the extra work of the live verification (the model round trip and saving the images) plus timing noise, not only HTTP time. In two of the three pairs the model read the fixture's Count click as "no visible change" and the act ended `outcome-unknown` (a disagreement with the page read-back); the latency is of the verifier call either way. Other runs of the same case the same day: an earlier run with a stricter assertion gave +4585.5, +2976.5 and +2852.0 ms (median +2976.5 ms, spend $0.008538, `.logs/am-bench/act-live.out`, `live/act-live-verifier.json`); two further runs failed that stricter assertion because the verifier's reply to the typed act came back as `unavailable: malformed verdict` (the ledger shows 600 output tokens for those calls, the request's `maxOutputTokens`; `.logs/am-bench/act-live-2.out`, `act-live-3.out`), so they produced no figures, and the case now asserts only that the live act was billed.
 
 Earlier run of the live pairs, quoted from the round-1 user-testing report (`validation/agent-muse/user-testing/flows/act.json` in the mission directory, script `.logs/validation/agent-muse/act/live-source.py`, commit 07e2374): added 4167.4, 3594.4 and 3053.8 ms, median 3594.4 ms. The same report measured the stubbed DOM path at n 40, p50 150.3 ms, p95 166.1 ms, max 167.2 ms. The figures above are a fresh run, not those.
+
+## Polish motion re-measure (2026-11-01)
+
+The four frontend budgets re-measured on `make bundle` output with the polish motion on (first-preview fade, activity panel and step fades, notice, status dot, command-button cover fade, trail flow, thinking orb; D70). Same machine and method as the release-bundle section; the bundle is `.build/Photon.app` from this commit, ad-hoc signed. 1-minute load average at the start of each command: overview 6.82, launcher 6.14, footprint 5.25. Raw output: `.logs/pm-bench/` (`bench-overview.{out,json}`, `bench-launcher.{out,json}`, `bench-footprint.{out,json}`), `.logs/pm-orb/polish-cpu.json`.
+
+| Budget | Limit | Measured | Verdict |
+| --- | --- | --- | --- |
+| Overview toggle, key-down to settled, Reduce Motion on, 20 live pages with previews, 100 alternating toggles | p95 < 100 ms | p50 52.29 ms, p95 **64.8 ms**, max 71.31, n 100 (`test.toggleTimings`) | **pass** |
+| Pan frame interval, committed canvas updates, 5 x 2 s pans, 20 nodes, 60 Hz | p95 <= 20 ms | p50 16.66 ms, p95 **16.88 ms**, max 17.15, n 596; 0 not-presented steps | **pass** |
+| Cmd-T to a usable launcher, 200 opens alternating a focused page and the overview (12 loaded pages, 10,000 history, 1,000 bookmarks) | p95 < 50 ms | p50 2.13 ms, p95 **2.31 ms**, max 2.54, n 200 | **pass** |
+| Suggestion update per keystroke, same run | p95 < 50 ms | p50 8.64 ms, p95 **12.59 ms**, max 22.49, n 300 | **pass** |
+| Footprint, one fixture tab settled 3 s, 2 alternating runs vs Chrome | within 5% of 199.4 MiB | Photon p50 **200.7 MiB** (199.6, 201.7; 6 processes); Chrome p50 537.7 MiB | **pass** |
+| Motion CPU, app process, `top -l 6 -s 2`: idle with no run (registry empty), then orb + Muse pulse + trail flow all live in the overview | idle about 0; run adds a few percent of one core at most | idle 0.0, 0.4, 0.2, 0.4, 0.2, 0.1 %; with all three loops live 0.0, 0.4, 0.4, 0.4, 0.3, 0.3 % | **pass** |
+
+Commands:
+
+```
+python3 -u scripts/bench.py overview --out .logs/pm-bench/bench-overview.json
+python3 -u scripts/bench.py launcher --out .logs/pm-bench/bench-launcher.json
+python3 -u scripts/bench.py footprint --footprint-runs 2 --out .logs/pm-bench/bench-footprint.json
+# motion CPU: app started with --test-hooks over e2e/bs.py, `top -l 6 -pid <app pid> -s 2 -stats pid,cpu`,
+# idle and with the orb, pulse and trail flow live (throwaway driver, not committed; output in .logs/pm-orb/polish-cpu.json)
+```
