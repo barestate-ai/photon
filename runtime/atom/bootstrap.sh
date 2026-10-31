@@ -29,5 +29,7 @@ if [[ ! -x "$RUNTIME_DIR/venv/bin/python" ]]; then
 fi
 "$RUNTIME_DIR/bin/uv" pip sync --python "$RUNTIME_DIR/venv/bin/python" \
   --require-hashes "$SCRIPT_DIR/requirements.lock" >&2
+# The uv cache only speeds up installs; keeping it would double the runtime's apparent size.
+rm -rf "$UV_CACHE_DIR"
 "$RUNTIME_DIR/venv/bin/python" -c 'import mlx.core, mlx_vlm, PIL' >&2
 printf '%s\n' "$RUNTIME_DIR/venv/bin/python"

@@ -156,6 +156,18 @@ Verifier in these runs: none. Every figure in this section was measured at or be
 
 The DOM act time is mostly the two round trips that locate and check the element and the 80 ms quiet period; the settle waits on events, never a fixed pause. Atom's first call after the runtime starts loads the model (about 2.9 s in the research notes) and is not in the median.
 
+## Slim Atom runtime (2026-11-01, D71)
+
+Same machine, 1-minute load average about 5. `BARESTATE_RUNTIME_DIR=/tmp/bs-atom-slim scripts/setup-atom.sh runtime` into an empty directory, then `du -sh` of it; warm `ground` through `runtime/atom/atom_runtime.py` on that venv with the read-only installed model (one warm-up, then 12 timed calls; screenshot generation excluded); in-app warm median from `BS_E2E_LOGDIR=/tmp/bs-atom-logs BARESTATE_ATOM_PYTHON=/tmp/bs-atom-slim/venv/bin/python python3 e2e/test_act_kinds.py RealAtom` (the `/tmp/bs-atom-logs` e2e log dir is deleted; the numbers are here and in `.logs/atom-slim-warm.json`).
+
+| Budget | Limit | Measured | Verdict |
+| --- | --- | --- | --- |
+| Fresh Atom runtime size (`du -sh`), slimmed lock + cache deleted after sync (D71) | smaller than the previous 2.4 GB | **1.2 GB** (venv 1.1 GB, managed Python 56 MB, uv 38 MB) | **pass** |
+| Atom `ground`, warm, direct stdio on the slim venv | median < 500 ms | median **333.5 ms**, min 321, max 347, n 12 (second run median 338.0) | **pass** |
+| Atom `ground`, warm, in-app (`test.ground`) on the slim venv | median < 500 ms (VAL-ACT-009) | median **330.9 ms**, min 324.0, max 349.1, n 12 | **pass** |
+
+A real act "Click Save" on `fixtures/ground.html` with `BARESTATE_ATOM_PYTHON` pointing at the slim venv landed `confirmed` on the atom rung (journal row `(confirmed, click, atom)`; the page read `click 1`), and `smoke_ground.py` passed against the read-only model.
+
 ## Acting: DOM act after the pre-write recheck (2026-10-31, D50)
 
 Command: `python3 e2e/test_act_kinds.py ActLatency`, run twice on the HEAD bundle and twice on the D50 bundle, 1-minute load average 4.7 to 5.0. HEAD: p50 149.9 and 150.0 ms, p95 152.2 and 164.6 ms (n 40). D50: p50 150.2 and 150.0 ms, p95 166.5 and 166.7 ms. Budget p50 < 250 ms: pass; no measurable change. DOM path with the verifier stubbed: these runs were after af72274, and `ActBase.setUp` in `e2e/test_act.py` calls `test.verifier` with `{"mode": "agree"}` before every test, so the page read-back decided and no model call was made.

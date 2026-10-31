@@ -1,7 +1,14 @@
+# What atom_runtime.py and the model's processing_florence2.py import at runtime.
+# mlx, mlx-vlm and transformers stay pinned to the verified versions.
+# Regenerate the lock: MACOSX_DEPLOYMENT_TARGET=14.0 uv pip compile --generate-hashes \
+#   --python-version 3.11 --python-platform aarch64-apple-darwin --no-emit-index-url \
+#   requirements.in -o requirements.lock   (uv's default 13.0 target has no mlx wheel)
 mlx==0.32.2
-mlx-vlm==0.7.1
 mlx-metal==0.32.2
+mlx-vlm==0.7.1
 transformers==5.17.0
+tokenizers
 pillow==12.0.0
+numpy
+# torch is imported at module level by processing_florence2.py (Florence-2 processor).
 torch==2.14.0
-torchvision==0.29.0
