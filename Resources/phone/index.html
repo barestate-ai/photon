@@ -1,0 +1,59 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="referrer" content="no-referrer">
+<meta name="color-scheme" content="light">
+<title>Photon</title>
+<link rel="stylesheet" href="app.css">
+</head>
+<body>
+<header>
+  <span class="brand">
+    <svg viewBox="0 0 100 70" width="24" height="17" aria-hidden="true"><path fill="#182923" d="M8 40L16 18Q17 16 20 15L67 1Q70 0 68 3L52 28Q51 30 48 31ZM7 46L79 35Q83 34 85 38L98 65Q100 69 95 68L8 48Q4 47 7 46Z"/></svg>
+    Photon
+  </span>
+  <span class="link" role="status" aria-live="polite"><i class="dot" id="link-dot"></i><span id="link-text">Connecting…</span></span>
+</header>
+
+<main>
+  <section id="offline" hidden>
+    <p id="offline-text"></p>
+    <button type="button" id="reconnect" class="primary">Reconnect</button>
+  </section>
+
+  <form id="task">
+    <label for="prompt">Ask Muse</label>
+    <textarea id="prompt" rows="3" maxlength="4000" enterkeyhint="send" placeholder="What should Muse do?" required></textarea>
+    <button type="submit" id="start" class="primary">Start task</button>
+    <p id="task-note" class="note" role="status"></p>
+  </form>
+
+  <section id="approvals" aria-label="Waiting for you"></section>
+
+  <template id="run-card">
+    <section class="card run" aria-label="Task">
+      <div class="muse"><i class="dot copper" id="run-dot"></i><span id="run-state"></span></div>
+      <p class="note" id="run-reason" hidden></p>
+      <p class="prompt" id="run-prompt"></p>
+      <p class="note">Run <span id="run-id" class="id"></span></p>
+      <figure id="shot">
+        <img id="screen" alt="Live view of the page Muse is working on" hidden>
+        <figcaption id="shot-wait" class="note">Waiting for the page…</figcaption>
+      </figure>
+      <div class="row">
+        <button type="button" id="stop">Stop</button>
+        <button type="button" id="takeover">Take over</button>
+      </div>
+    </section>
+  </template>
+  <div id="run-slot"></div>
+</main>
+
+<footer>
+  <button type="button" id="disconnect" class="quiet">Disconnect</button>
+</footer>
+<script src="app.js"></script>
+</body>
+</html>
