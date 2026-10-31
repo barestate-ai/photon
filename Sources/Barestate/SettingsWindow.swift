@@ -1,0 +1,386 @@
+import AppKit
+import BarestateCore
+import CoreImage
+
+/// A button the Tab loop always visits: without Full Keyboard Access AppKit skips buttons, and a
+/// focused button does not run the loop for Tab or press for Space on its own.
+private final class KeyButton: NSButton {
+  override var canBecomeKeyView: Bool { isEnabled && !isHiddenOrHasHiddenAncestor }
+  override var acceptsFirstResponder: Bool { isEnabled }
+
+  override func keyDown(with event: NSEvent) {
+    switch event.keyCode {
+    case 48: moveKeyFocus(event)
+    case 36, 49, 76: performClick(nil)
+    default: super.keyDown(with: event)
+    }
+  }
+}
+
+/// Holds focus until a control takes it, so Tab starts the key loop from the keyboard alone.
+private final class SettingsRoot: NSView {
+  override var acceptsFirstResponder: Bool { true }
+  override var canBecomeKeyView: Bool { false }
+
+  override func keyDown(with event: NSEvent) {
+    if event.keyCode == 48 { moveKeyFocus(event) } else { super.keyDown(with: event) }
+  }
+}
+
+/// The ⌘, window. Each control changes the live app through `AppController` and is saved to
+/// settings.json there, so the window itself keeps no state beyond what it shows.
+@MainActor
+final class SettingsWindow: NSObject, NSWindowDelegate {
+  private static let qrSide: CGFloat = 180
+  private static let modelKeyNote =
+    "Muse needs a key in the environment, the .env file or the Keychain item meta-model-api."
+  static let reduceMotionNote =
+    "Photon follows the system Reduce Motion setting. When it is on, movement on the canvas happens at once."
+
+  let window: BarestateWindow
+  private unowned let controller: AppController
+  private var engineButtons: [(engine: SearchEngine, button: NSButton)] = []
+  private let modelStatus = NSTextField(labelWithString: "")
+  private let content = NSStackView()
+  private let remoteToggle = KeyButton()
+  private let remoteStatus = SettingsWindow.noteLabel("")
+  private let pairButton = KeyButton()
+  private let qrView = NSImageView()
+  private let qrNote = SettingsWindow.noteLabel(
+    "Scan with your phone's camera. This code is shown once.")
+  private let devicesList = NSStackView()
+  private(set) var sectionTitles: [String] = []
+  /// How many times the window has closed, so a test waits for the close itself.
+  private(set) var closeCount = 0
+  /// How many times an engine was chosen, so a test can tell one keypress from two.
+  private(set) var engineChanges = 0
+
+  init(controller: AppController) {
+    self.controller = controller
+    window = BarestateWindow(
+      contentRect: NSRect(x: 0, y: 0, width: 480, height: 560),
+      styleMask: [.titled, .closable], backing: .buffered, defer: false)
+    super.init()
+    window.title = "Settings"
+    window.delegate = self
+    window.isReleasedWhenClosed = false
+    window.isRestorable = false
+    window.backgroundColor = Design.canvas
+    let root = SettingsRoot()
+    root.addSubview(makeContent())
+    window.contentView = root
+    NSLayoutConstraint.activate([
+      content.topAnchor.constraint(equalTo: root.topAnchor),
+      content.leadingAnchor.constraint(equalTo: root.leadingAnchor),
+      content.widthAnchor.constraint(equalToConstant: 480),
+    ])
+    window.makeFirstResponder(root)
+    window.setAccessibilityLabel("Settings")
+    refresh()
+  }
+
+  /// Without an active app (a scripted or locked session) AppKit does not hand key status back,
+  /// and the main window then drops every key event.
+  func windowWillClose(_ notification: Notification) {
+    closeCount += 1
+    hideQR()
+    controller.window?.makeKey()
+  }
+
+  /// A closed window can keep reporting key until another window takes over.
+  var isFront: Bool { window.isVisible && window.isKeyWindow }
+
+  func show() {
+    refresh()
+    if !window.isVisible { window.center() }
+    // An inactive app never makes the window key, and the next ⌘W would then miss it.
+    if controller.testHooks { controller.activateApp() }
+    window.makeKeyAndOrderFront(nil)
+  }
+
+  /// Brings every control in line with the controller, whoever changed the setting.
+  func refresh() {
+    for (engine, button) in engineButtons {
+      button.state = engine.template == controller.settings.searchEngine ? .on : .off
+    }
+    modelStatus.stringValue = controller.museOutage == nil ? "Available" : "Unavailable"
+    let remote = controller.remote
+    remoteToggle.state = remote.isRequested ? .on : .off
+    remoteStatus.stringValue = remote.statusText
+    pairButton.isEnabled = remote.isOn
+    if !remote.isOn { hideQR() }
+    showDevices()
+    window.recalculateKeyViewLoop()
+    fit()
+  }
+
+  var remoteState: JSON {
+    [
+      "on": .bool(controller.remote.isOn), "status": .string(controller.remote.statusText),
+      "qrShown": .bool(!qrView.isHidden),
+      "devices": .array(
+        controller.remote.devices.map { device in
+          [
+            "label": .string(device.pairing.label), "hash": .string(device.pairing.hash),
+            "created": .string(device.pairing.created),
+            "lastSeen": device.lastSeen.map { .string($0) } ?? .null,
+          ]
+        }),
+    ]
+  }
+
+  var selectedEngine: String? {
+    engineButtons.first { $0.button.state == .on }?.engine.name
+  }
+
+  var modelStatusText: String { modelStatus.stringValue }
+
+  /// Labels of the controls Tab visits, in order, starting after the content view, once round.
+  var keyLoop: [String] {
+    var visited: [NSView] = []
+    var view = window.contentView?.nextValidKeyView
+    while let current = view, !visited.contains(current) {
+      visited.append(current)
+      view = current.nextValidKeyView
+    }
+    return visited.map { $0.accessibilityLabel() ?? "" }
+  }
+
+  var focusedLabel: String? { (window.firstResponder as? NSView)?.accessibilityLabel() }
+
+  /// Settings controls by the ids test hooks click.
+  var controlsById: [String: NSView] {
+    var found: [String: NSView] = [
+      "settings.remote.enable": remoteToggle, "settings.remote.pair": pairButton,
+    ]
+    for (engine, button) in engineButtons {
+      found["settings.engine.\(engine.name.lowercased())"] = button
+    }
+    return found
+  }
+
+  // MARK: Building
+
+  private func makeContent() -> NSView {
+    let stack = content
+    stack.translatesAutoresizingMaskIntoConstraints = false
+    stack.orientation = .vertical
+    stack.alignment = .leading
+    stack.spacing = 8
+    stack.edgeInsets = NSEdgeInsets(top: 24, left: 24, bottom: 24, right: 24)
+
+    section("Search engine", in: stack)
+    for engine in SearchEngine.all {
+      let button = radio(engine.name, action: #selector(engineChosen(_:)))
+      button.identifier = NSUserInterfaceItemIdentifier(engine.template)
+      engineButtons.append((engine, button))
+      stack.addArrangedSubview(button)
+    }
+
+    section("Model", in: stack)
+    modelStatus.font = Fonts.manrope(14)
+    modelStatus.textColor = Design.ink
+    modelStatus.setAccessibilityLabel("Model status")
+    stack.addArrangedSubview(modelStatus)
+    stack.addArrangedSubview(wrappedNote(Self.modelKeyNote))
+
+    section("Remote", in: stack)
+    remoteToggle.setButtonType(.switch)
+    remoteToggle.attributedTitle = inkTitle("Enable Remote")
+    remoteToggle.setAccessibilityLabel("Enable Remote")
+    remoteToggle.target = self
+    remoteToggle.action = #selector(remoteToggled)
+    stack.addArrangedSubview(remoteToggle)
+    stack.addArrangedSubview(remoteStatus)
+    pairButton.bezelStyle = .rounded
+    pairButton.bezelColor = Design.petrol
+    pairButton.attributedTitle = NSAttributedString(
+      string: "Pair a phone",
+      attributes: [.font: Fonts.manrope(14), .foregroundColor: Design.surface])
+    pairButton.setAccessibilityLabel("Pair a phone")
+    pairButton.target = self
+    pairButton.action = #selector(pairPhone)
+    stack.addArrangedSubview(pairButton)
+    qrView.imageScaling = .scaleProportionallyUpOrDown
+    qrView.wantsLayer = true
+    qrView.isHidden = true
+    qrView.setAccessibilityRole(.image)
+    qrView.setAccessibilityLabel("Pairing QR code")
+    qrNote.isHidden = true
+    NSLayoutConstraint.activate([
+      qrView.widthAnchor.constraint(equalToConstant: Self.qrSide),
+      qrView.heightAnchor.constraint(equalToConstant: Self.qrSide),
+    ])
+    stack.addArrangedSubview(qrView)
+    stack.addArrangedSubview(qrNote)
+    stack.addArrangedSubview(body("Paired devices"))
+    devicesList.orientation = .vertical
+    devicesList.alignment = .leading
+    devicesList.spacing = 8
+    devicesList.setContentHuggingPriority(.defaultLow, for: .horizontal)
+    stack.addArrangedSubview(devicesList)
+    devicesList.widthAnchor.constraint(equalToConstant: 432).isActive = true
+
+    section("Motion", in: stack)
+    stack.addArrangedSubview(wrappedNote(Self.reduceMotionNote))
+
+    return stack
+  }
+
+  /// The Remote section grows and shrinks (QR code, paired devices), so the window follows,
+  /// keeping its top edge where it is.
+  private func fit() {
+    window.layoutIfNeeded()
+    let height = content.fittingSize.height
+    var frame = window.frameRect(forContentRect: NSRect(x: 0, y: 0, width: 480, height: height))
+    frame.origin = NSPoint(x: window.frame.minX, y: window.frame.maxY - frame.height)
+    window.setFrame(frame, display: true)
+  }
+
+  private func section(_ title: String, in stack: NSStackView) {
+    sectionTitles.append(title)
+    if let last = stack.arrangedSubviews.last { stack.setCustomSpacing(24, after: last) }
+    let label = NSTextField(labelWithString: title)
+    label.font = Fonts.manrope(14, weight: 500)
+    label.textColor = Design.ink
+    label.setAccessibilityRole(.staticText)
+    label.setAccessibilityLabel(title)
+    stack.addArrangedSubview(label)
+  }
+
+  private func body(_ text: String) -> NSTextField {
+    let label = NSTextField(labelWithString: text)
+    label.font = Fonts.manrope(14)
+    label.textColor = Design.ink
+    return label
+  }
+
+  private func inkTitle(_ text: String) -> NSAttributedString {
+    NSAttributedString(
+      string: text, attributes: [.font: Fonts.manrope(14), .foregroundColor: Design.ink])
+  }
+
+  private func note(_ text: String) -> NSTextField { Self.noteLabel(text) }
+
+  private func wrappedNote(_ text: String) -> NSTextField {
+    let label = note(text)
+    label.preferredMaxLayoutWidth = 432
+    label.lineBreakMode = .byWordWrapping
+    label.maximumNumberOfLines = 0
+    return label
+  }
+
+  private static func noteLabel(_ text: String) -> NSTextField {
+    let label = NSTextField(labelWithString: text)
+    label.font = Fonts.manrope(12)
+    label.textColor = Design.muted
+    return label
+  }
+
+  private func radio(_ title: String, action: Selector) -> NSButton {
+    let button = KeyButton()
+    button.setButtonType(.radio)
+    button.target = self
+    button.action = action
+    button.attributedTitle = inkTitle(title)
+    button.setAccessibilityLabel(title)
+    return button
+  }
+
+  // MARK: Remote
+
+  private func showDevices() {
+    for key in controller.viewsById.keys where key.hasPrefix("settings.remote.revoke.") {
+      controller.viewsById[key] = nil
+    }
+    for row in devicesList.arrangedSubviews { row.removeFromSuperview() }
+    let devices = controller.remote.devices
+    if devices.isEmpty { devicesList.addArrangedSubview(note("No paired devices.")) }
+    for (pairing, lastSeen) in devices {
+      let name = body(pairing.label)
+      let detail = note(
+        "Paired \(Self.when(pairing.created)) · Last seen \(lastSeen.map(Self.when) ?? "never")")
+      let text = NSStackView(views: [name, detail])
+      text.orientation = .vertical
+      text.alignment = .leading
+      text.spacing = 2
+      let revoke = KeyButton()
+      revoke.bezelStyle = .rounded
+      revoke.attributedTitle = inkTitle("Revoke")
+      revoke.setAccessibilityLabel("Revoke \(pairing.label)")
+      revoke.identifier = NSUserInterfaceItemIdentifier(pairing.hash)
+      revoke.target = self
+      revoke.action = #selector(revokeDevice)
+      controller.viewsById["settings.remote.revoke.\(pairing.hash.prefix(8))"] = revoke
+      text.setContentHuggingPriority(.defaultLow, for: .horizontal)
+      let row = NSStackView(views: [text, revoke])
+      row.orientation = .horizontal
+      row.distribution = .fill
+      row.alignment = .centerY
+      devicesList.addArrangedSubview(row)
+      row.widthAnchor.constraint(equalTo: devicesList.widthAnchor).isActive = true
+    }
+  }
+
+  private static func when(_ iso: String) -> String {
+    ISO8601DateFormatter().date(from: iso)?.formatted(date: .abbreviated, time: .shortened) ?? iso
+  }
+
+  /// The code carries the only copy of the token this window ever sees, so it goes away with
+  /// the window, with Remote, and with the next pairing.
+  private func hideQR() {
+    qrView.image = nil
+    qrView.isHidden = true
+    qrNote.isHidden = true
+  }
+
+  private func showQR(_ text: String) {
+    let side = Self.qrSide
+    guard
+      let image = QRCode.image(
+        text, dark: CIColor(color: Design.ink)!, light: CIColor(color: Design.surface)!)
+    else { return Log.error(.remote, "qr code failed") }
+    qrView.image = NSImage(cgImage: image, size: NSSize(width: side, height: side))
+    qrView.isHidden = false
+    qrNote.isHidden = false
+    fit()
+    let reduced = MotionLedger.shared.reduced()
+    MotionLedger.shared.start(
+      .qrReveal, target: "pairing",
+      [
+        .init(
+          layer: qrView.layer!, key: "qr.reveal",
+          animation: Motion.ease(
+            "opacity", from: 0, to: 1,
+            duration: reduced ? Motion.reducedFade : Motion.fadeSmall))
+      ])
+  }
+
+  // MARK: Actions
+
+  @objc private func remoteToggled(_ sender: NSButton) {
+    if sender.state == .on {
+      controller.remote.enable()
+    } else {
+      controller.remote.disable()
+    }
+  }
+
+  @objc private func pairPhone(_ sender: NSButton) {
+    hideQR()
+    guard let token = controller.remote.pair(), let url = controller.remote.pairingURL(token)
+    else { return }
+    showQR(url)
+  }
+
+  @objc private func revokeDevice(_ sender: NSButton) {
+    guard let hash = sender.identifier?.rawValue else { return }
+    controller.remote.revoke(hash: hash)
+  }
+
+  @objc private func engineChosen(_ sender: NSButton) {
+    guard let template = sender.identifier?.rawValue else { return }
+    engineChanges += 1
+    controller.setSearchEngine(template)
+  }
+}
