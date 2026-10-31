@@ -48,8 +48,12 @@ class RunMotionCase(TaskCase):
     def rest(self):
         bs.wait_until(lambda: not self.motion()["inFlight"], what="motion at rest")
 
+    def pulse_loops(self):
+        """Only the pulse: the thinking orb and the trail flow share the loop registry."""
+        return [l for l in self.loops() if l["kind"] == "musePulse"]
+
     def wait_loop(self):
-        return bs.wait_until(lambda: (lambda l: l[0] if l else None)(self.loops()),
+        return bs.wait_until(lambda: (lambda l: l[0] if l else None)(self.pulse_loops()),
                              what="the Muse pulse")
 
     def gone_within(self, action, limit=0.3):
@@ -59,7 +63,7 @@ class RunMotionCase(TaskCase):
 
         def gone():
             state = self.motion()
-            return not state["infiniteLoops"] and not any(
+            return not any(l["kind"] == "musePulse" for l in state["infiniteLoops"]) and not any(
                 i["kind"] == "musePulse" for i in state["inFlight"])
         bs.wait_until(gone, what="the pulse to be gone", timeout=2)
         elapsed = time.monotonic() - started
@@ -94,7 +98,7 @@ class PulseTests(RunMotionCase):
         timeline = {"load": os.getloadavg()[0]}
         for end in ("completed", "stopped", "failed"):
             run = self.start(f"Read {end}", tab=page["id"])
-            self.assertEqual(self.loops(), [], "connecting does not pulse")
+            self.assertEqual(self.pulse_loops(), [], "connecting does not pulse")
             self.state(run["runId"], "running")
             loop = self.wait_loop()
             self.assertEqual(
@@ -103,9 +107,9 @@ class PulseTests(RunMotionCase):
                 ("musePulse", "muse-pulse", node, run["runId"], "overview", "easeOut",
                  ["opacity"]))
             self.state(run["runId"], "waiting-approval")
-            self.assertEqual([l["runId"] for l in self.loops()], [run["runId"]])
+            self.assertEqual([l["runId"] for l in self.pulse_loops()], [run["runId"]])
             self.state(run["runId"], "running")
-            self.assertEqual(len(self.loops()), 1)
+            self.assertEqual(len(self.pulse_loops()), 1)
             timeline[end] = self.gone_within(
                 lambda: self.state(run["runId"], end, "no model API key" if end == "failed" else None))
             self.rest()
@@ -118,11 +122,11 @@ class PulseTests(RunMotionCase):
         run = self.pulse_run(page, "Read this page")
         self.assertEqual(self.wait_loop()["surface"], "overview")
         self.show("focused")
-        bs.wait_until(lambda: [l["surface"] for l in self.loops()] == ["focus"],
+        bs.wait_until(lambda: [l["surface"] for l in self.pulse_loops()] == ["focus"],
                       what="only the focused page pulsing")
         self.gone_within(lambda: self.state(run["runId"], "stopped"))
         self.show("overview")
-        self.assertEqual(self.loops(), [])
+        self.assertEqual(self.pulse_loops(), [])
 
     def test_a_pulse_never_starts_for_another_page_or_after_the_run_ends(self):
         """VAL-MOTION-006"""
@@ -131,11 +135,11 @@ class PulseTests(RunMotionCase):
         self.show("overview")
         run = self.pulse_run(page, "Read this page")
         self.assertEqual(self.wait_loop()["target"], self.node_of(page["id"])["id"])
-        self.assertEqual(len(self.loops()), 1)
+        self.assertEqual(len(self.pulse_loops()), 1)
         self.gone_within(lambda: self.state(run["runId"], "completed"))
         self.call("test.activateTab", {"tabId": other["id"]})
         self.show("overview")
-        self.assertEqual(self.loops(), [])
+        self.assertEqual(self.pulse_loops(), [])
 
     def test_the_pulse_is_static_and_every_change_opacity_only_with_reduce_motion(self):
         """VAL-MOTION-003, VAL-MOTION-006"""
@@ -150,7 +154,7 @@ class PulseTests(RunMotionCase):
             self.open_launcher()
             for state in ("running", "waiting-approval", "running", "completed"):
                 self.state(run["runId"], state)
-                self.assertEqual(self.loops(), [], f"a pulse while {state}")
+                self.assertEqual(self.pulse_loops(), [], f"a pulse while {state}")
             self.close_launcher()
         items = self.sample_all(drive, limit=0.8)
         self.assertEqual(self.loops(), [])

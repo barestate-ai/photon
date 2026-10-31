@@ -12,7 +12,8 @@ from appcase import save, url
 from test_focus import FocusCase
 
 PURPOSES = {"camera", "node-entrance", "trail-draw", "preview-crossfade", "button-press",
-            "muse-pulse", "result-state", "approval-entrance", "completion"}
+            "muse-pulse", "result-state", "approval-entrance", "completion", "panel-fade",
+            "notice-fade", "status-fade", "trail-flow", "thinking-orb"}
 SOURCES = os.path.join(bs.ROOT, "Sources", "Barestate")
 
 
@@ -682,10 +683,12 @@ class RegistryTests(MotionCase):
                                  item)
         self.assertEqual(state["infiniteLoops"], [])
 
-    # The only places in the app that may match: MuseMark's pulse is the one infinite animation;
-    # the rest are not animations (a 3 s guard on a dropped synthetic event, the notice's
+    # The only places in the app that may match: MuseMark's pulse, Trail's flow and the orb's
+    # spin are the infinite animations; the rest are not animations (a 3 s guard on a dropped synthetic event, the notice's
     # dismissal, the toggle measurement and the frame probe test hook).
     ALLOWED = (("MuseMark.swift", "repeatCount = .infinity"),
+               ("Trail.swift", "repeatCount = .infinity"),
+               ("ThinkingOrbView.swift", "repeatCount = .infinity"),
                ("BarestateApplication.swift", "asyncAfter(deadline: .now() + 3)"),
                ("WindowRootView.swift", "noticeTimer"),
                ("AppController.swift", "ToggleTimer"),

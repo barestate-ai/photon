@@ -21,6 +21,17 @@ enum Trail {
     line.lineDashPattern = [NSNumber(value: zoom), NSNumber(value: 7 * zoom)]
   }
 
+  /// The dashes drift one period toward the page Muse used (the path runs from the owner to it).
+  static func flow(zoom: Double) -> CABasicAnimation {
+    let animation = CABasicAnimation(keyPath: "lineDashPhase")
+    animation.fromValue = 0
+    animation.toValue = -8 * zoom
+    animation.duration = Motion.trailFlowPeriod
+    animation.timingFunction = Motion.linear
+    animation.repeatCount = .infinity
+    return animation
+  }
+
   static func path(_ route: EdgeRoute, through map: (CGPoint) -> CGPoint = { $0 }) -> CGPath {
     let path = CGMutablePath()
     path.move(to: map(route.start))

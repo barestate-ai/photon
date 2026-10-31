@@ -35,4 +35,10 @@ func registerMotionHooks(_ dispatcher: RPCDispatcher, controller: AppController)
     if params["settle"]?.bool == true { MotionLedger.shared.settleAll() }
     return controller.motionState()
   }
+
+  // The only notice the app shows appears with a camera move; this one can come on an idle canvas.
+  dispatcher.register("test.notice") { params in
+    controller.notify(try params.requireString("text"))
+    return [:]
+  }
 }

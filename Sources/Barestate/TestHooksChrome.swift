@@ -100,6 +100,18 @@ extension AppController {
     ]
   }
 
+  func orbState() -> JSON {
+    guard let root else { return .null }
+    let orb = root.orb
+    return [
+      "visible": .bool(!orb.isHidden),
+      "variant": .string(orb.shown ? (orb.working ? "working" : "thinking") : ""),
+      "runId": .string(orb.runId),
+      "spinning": .bool(orb.spinning),
+      "frame": windowRect(orb),
+    ]
+  }
+
   func captionState() -> JSON {
     guard let root else { return .null }
     let view = root.caption

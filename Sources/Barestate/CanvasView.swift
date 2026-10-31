@@ -34,6 +34,8 @@ final class CanvasView: NSView, NSTextFieldDelegate {
   private let nodeLayer = CALayer()
   private(set) var cards: [String: NodeCard] = [:]
   private(set) var trails: [String: CAShapeLayer] = [:]
+  /// Ids of the trail-flow loops running now.
+  private var flowing: Set<String> = []
   private var renderScale: CGFloat = 0
   private var settling: Task<Void, Never>?
   private var gestureEnd: Task<Void, Never>?
@@ -164,6 +166,7 @@ final class CanvasView: NSView, NSTextFieldDelegate {
   func refresh() {
     guard !isHidden, bounds.width > 0, let layer else {
       for card in cards.values { card.hideMuse() }
+      setFlowing([])
       return
     }
     let scale = window?.backingScaleFactor ?? 2
@@ -267,6 +270,39 @@ final class CanvasView: NSView, NSTextFieldDelegate {
     for key in trails.keys where !live.contains(key) {
       trails.removeValue(forKey: key)?.removeFromSuperlayer()
     }
+    flowNewestTrails(camera)
+  }
+
+  /// The newest Muse trail of each run that is working drifts, ambient, until the run ends. The
+  /// loop id carries the zoom, which sets the dash period, so a zoom change restarts it once.
+  private func flowNewestTrails(_ camera: Viewport) {
+    var wanted: [String: (key: String, run: String)] = [:]
+    if !app.motionReduced {
+      var newest: [String: String] = [:]
+      for edge in graph.edges where edge.kind == .museUsed {
+        guard let run = edge.runId else { continue }
+        newest[run] = "\(edge.from)>\(edge.to)>\(edge.kind.rawValue)>\(run)"
+      }
+      for (run, key) in newest where app.runs.run(run)?.state == .running {
+        wanted["trail:\(key)@\(String(format: "%.2f", camera.zoom))"] = (key, run)
+      }
+    }
+    // Stop the obsolete loops first: a replacement shares the layer and key, so stopping it
+    // afterwards would remove the animation just added.
+    let ids = Set(wanted.keys)
+    for id in flowing.subtracting(ids) { MotionLedger.shared.stopLoop(id, settle: false) }
+    for (id, trail) in wanted where !flowing.contains(id) {
+      guard let line = trails[trail.key] else { continue }
+      MotionLedger.shared.startLoop(
+        .trailFlow, id: id, target: trail.key, runId: trail.run, surface: "overview", layer: line,
+        key: "trail.flow", animation: Trail.flow(zoom: camera.zoom))
+    }
+    flowing = ids
+  }
+
+  private func setFlowing(_ ids: Set<String>) {
+    for id in flowing.subtracting(ids) { MotionLedger.shared.stopLoop(id, settle: false) }
+    flowing = ids
   }
 
   // MARK: Motion

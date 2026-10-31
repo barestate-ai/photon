@@ -15,11 +15,16 @@ final class RunActivityView: NSView {
   private let prompt = NSTextField(wrappingLabelWithString: "")
   private let status = NSTextField(labelWithString: "")
   private let list = FlippedView()
+  /// Step lines, kept across renders of one run so their text updates in place.
   private var rows: [NSTextField] = []
-  private var entryCount = 0
+  /// The placeholder and the waiting lines, rebuilt on each render.
+  private var extras: [NSTextField] = []
+  private var renderedRun: String?
   private var activity: RunActivity?
   private var scrollOffset = 0.0
   private var contentHeight = 0.0
+  /// Closed in the model, still fading out on screen: `isHidden` waits for the fade.
+  private var leaving = false
 
   private static let pad: CGFloat = 20
   private static let gap: CGFloat = 10
@@ -31,6 +36,7 @@ final class RunActivityView: NSView {
     super.init(frame: frame)
     isHidden = true
     panel.wantsLayer = true
+    panel.layer?.opacity = 0
     panel.layer?.backgroundColor = Design.surface.cgColor
     panel.layer?.cornerRadius = Design.radiusPanel
     panel.layer?.borderWidth = 1
@@ -65,7 +71,7 @@ final class RunActivityView: NSView {
 
   required init?(coder: NSCoder) { fatalError("not used") }
 
-  var isOpen: Bool { !isHidden }
+  var isOpen: Bool { !isHidden && !leaving }
 
   @objc private func stopPressed() { onStop?() }
   @objc private func closePressed() { onClose?() }
@@ -82,17 +88,38 @@ final class RunActivityView: NSView {
   // MARK: Showing
 
   func show(_ next: RunActivity) {
+    leaving = false
     isHidden = false
     scrollOffset = 0
-    render(next)
+    render(next, animated: false)
   }
 
+  /// The panel leaves with a fade; a closed panel always has opacity 0, which is where `appear`
+  /// starts from, so a reopen during the fade resumes from the frame on screen.
   func hide() {
-    isHidden = true
+    let run = activity?.runId ?? ""
     activity = nil
+    guard let layer = panel.layer, isOpen else { return }
+    leaving = true
+    let from = (Motion.current(layer, "opacity") as? NSNumber)?.floatValue ?? 1
+    layer.opacity = 0
+    let duration = MotionLedger.shared.reduced() ? Motion.reducedFade : Motion.approvalQuickOut
+    MotionLedger.shared.start(
+      .activityOut, target: run,
+      [
+        .init(
+          layer: layer, key: "activity.fade",
+          animation: Motion.ease("opacity", from: from, to: 0, duration: duration))
+      ]
+    ) { [weak self] _ in
+      guard let self, leaving else { return }
+      leaving = false
+      isHidden = true
+    }
   }
 
-  func render(_ next: RunActivity) {
+  /// `animated`: lines added since the last render fade in; the first draw of a panel does not.
+  func render(_ next: RunActivity, animated: Bool = true) {
     activity = next
     prompt.stringValue = next.prompt
     let because = next.reason.flatMap { $0 == next.status ? nil : " · \($0)" } ?? ""
@@ -100,13 +127,12 @@ final class RunActivityView: NSView {
     stop.isEnabled = next.canStop
     stop.setAccessibilityLabel(next.canStop ? "Stop \(next.prompt)" : "Stop")
     close.setAccessibilityLabel("Close Muse activity")
-    rebuildList(next)
+    rebuildList(next, animated: animated)
     layoutPanel()
     NSAccessibility.post(element: panel, notification: .layoutChanged)
   }
 
-  private func line(_ title: String, _ detail: String, label: String) -> NSTextField {
-    let field = NSTextField(wrappingLabelWithString: "")
+  private func fill(_ field: NSTextField, _ title: String, _ detail: String, label: String) {
     let text = NSMutableAttributedString(
       string: title, attributes: [.font: Fonts.ui(13), .foregroundColor: Design.ink])
     if !detail.isEmpty {
@@ -118,21 +144,59 @@ final class RunActivityView: NSView {
     field.attributedStringValue = text
     field.setAccessibilityRole(.staticText)
     field.setAccessibilityLabel(label)
+  }
+
+  private func line(_ title: String, _ detail: String, label: String) -> NSTextField {
+    let field = NSTextField(wrappingLabelWithString: "")
+    fill(field, title, detail, label: label)
     return field
   }
 
-  private func rebuildList(_ next: RunActivity) {
-    for view in list.subviews { view.removeFromSuperview() }
-    var fields = next.entries.map { line($0.text, $0.detail, label: "\($0.text), \($0.detail)") }
-    entryCount = fields.count
-    if fields.isEmpty { fields = [line("No steps yet", "", label: "No steps yet")] }
-    fields += next.waiting.map {
+  /// Entry rows are kept and their text updated in place, so a line the person reads never gets
+  /// swapped out and a fade lands on the row that stays. A run's steps only grow; a different
+  /// run starts the list over without fading.
+  private func rebuildList(_ next: RunActivity, animated: Bool) {
+    let sameRun = renderedRun == next.runId
+    if !sameRun {
+      for row in rows { row.removeFromSuperview() }
+      rows = []
+      renderedRun = next.runId
+    }
+    for extra in extras { extra.removeFromSuperview() }
+    var fresh: [NSTextField] = []
+    for (index, entry) in next.entries.enumerated() {
+      if index < rows.count {
+        fill(rows[index], entry.text, entry.detail, label: "\(entry.text), \(entry.detail)")
+      } else {
+        let field = line(entry.text, entry.detail, label: "\(entry.text), \(entry.detail)")
+        rows.append(field)
+        list.addSubview(field)
+        if sameRun, animated { fresh.append(field) }
+      }
+    }
+    while rows.count > next.entries.count { rows.removeLast().removeFromSuperview() }
+    extras = []
+    if next.entries.isEmpty { extras.append(line("No steps yet", "", label: "No steps yet")) }
+    extras += next.waiting.map {
       line(
         $0, "Waiting for you · decide with the approval card on its page",
         label: "Waiting for you: \($0)")
     }
-    rows = fields
-    for field in rows { list.addSubview(field) }
+    for extra in extras { list.addSubview(extra) }
+    if !fresh.isEmpty { fadeIn(fresh, run: next.runId) }
+  }
+
+  /// Opacity only: the lines keep their frames, so nothing the person is reading moves.
+  private func fadeIn(_ fields: [NSTextField], run: String) {
+    let duration = MotionLedger.shared.reduced() ? Motion.reducedFade : Motion.fadeSmall
+    let parts = fields.compactMap { field -> MotionLedger.Part? in
+      field.wantsLayer = true
+      guard let layer = field.layer else { return nil }
+      return .init(
+        layer: layer, key: "step.fade",
+        animation: Motion.ease("opacity", from: 0, to: 1, duration: duration))
+    }
+    MotionLedger.shared.start(.stepIn, target: run, parts)
   }
 
   // MARK: Layout
@@ -166,11 +230,12 @@ final class RunActivityView: NSView {
     y = status.frame.maxY + Self.gap
 
     var inside: CGFloat = 0
-    for (index, field) in rows.enumerated() {
+    let all = rows + extras
+    for (index, field) in all.enumerated() {
       let h = height(of: field, width: inner)
       field.frame = NSRect(x: 0, y: inside, width: inner, height: h)
       inside += h + Self.gap
-      if index + 1 == max(entryCount, 1), index + 1 < rows.count { inside += Self.gap }
+      if index + 1 == max(rows.count, 1), index + 1 < all.count { inside += Self.gap }
     }
     contentHeight = max(0, inside - Self.gap)
     let buttons = max(stop.frame.height, close.frame.height)
@@ -193,11 +258,14 @@ final class RunActivityView: NSView {
   func appear() {
     guard let layer = panel.layer else { return }
     let reduced = MotionLedger.shared.reduced()
+    let from = (Motion.current(layer, "opacity") as? NSNumber)?.floatValue ?? 0
+    layer.opacity = 1
     var parts: [MotionLedger.Part] = [
       .init(
         layer: layer, key: "activity.fade",
         animation: Motion.ease(
-          "opacity", from: 0, to: 1, duration: reduced ? Motion.reducedFade : Motion.approvalIn))
+          "opacity", from: from, to: 1,
+          duration: reduced ? Motion.reducedFade : Motion.approvalIn))
     ]
     if !reduced {
       parts.append(

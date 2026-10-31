@@ -16,9 +16,10 @@ final class MotionLedger: NSObject, CAAnimationDelegate {
     case previewCrossfade, previewStale
     case buttonPress, buttonHover, nodePress, nodePickup, nodeDrop
     case rowState, museLabel
-    case approvalIn, approvalOut, activityIn
+    case approvalIn, approvalOut, activityIn, activityOut, stepIn
+    case notice, statusDot, buttonFade
     case qrReveal, phoneChip
-    case musePulse, completion
+    case musePulse, completion, trailFlow, thinkingOrb
 
     var purpose: String {
       switch self {
@@ -31,6 +32,11 @@ final class MotionLedger: NSObject, CAAnimationDelegate {
       case .musePulse: "muse-pulse"
       case .completion: "completion"
       case .approvalIn, .approvalOut, .activityIn: "approval-entrance"
+      case .activityOut, .stepIn: "panel-fade"
+      case .notice: "notice-fade"
+      case .statusDot, .buttonFade: "status-fade"
+      case .trailFlow: "trail-flow"
+      case .thinkingOrb: "thinking-orb"
       case .qrReveal: "pairing-reveal"
       case .phoneChip: "status-chip"
       }
@@ -99,6 +105,8 @@ final class MotionLedger: NSObject, CAAnimationDelegate {
     /// What the animation added to the layer is, read from it where it was built.
     let keyPath: String
     let curve: String
+    /// One pass of the loop, in seconds.
+    let durationS: Double
   }
   private var loops: [String: Loop] = [:]
 
@@ -112,7 +120,9 @@ final class MotionLedger: NSObject, CAAnimationDelegate {
     stopLoop(id, settle: false)
     loops[id] = Loop(
       kind: kind, target: target, runId: runId, surface: surface, layer: layer, key: key,
-      keyPath: (animation as? CAPropertyAnimation)?.keyPath ?? "", curve: Self.describe(animation).0
+      keyPath: (animation as? CAPropertyAnimation)?.keyPath ?? "",
+      curve: Self.describe(animation).0,
+      durationS: animation.duration
     )
     layer.add(animation, forKey: key)
   }
@@ -238,14 +248,15 @@ final class MotionLedger: NSObject, CAAnimationDelegate {
     animation.beginTime > 0 ? max(0, animation.beginTime - CACurrentMediaTime()) : 0
   }
 
-  /// The curve as the registry names it; anything but the strong ease-out or a spring shows up
-  /// as `other`, which the contract fails.
+  /// The curve as the registry names it; anything but the strong ease-out, a spring or the trail
+  /// flow's linear shows up as `other`, which the contract fails.
   private static func describe(_ animation: CAAnimation?) -> (String, Double) {
     if let spring = animation as? CASpringAnimation {
       let ratio = spring.damping / (2 * (spring.stiffness * spring.mass).squareRoot())
       return ("spring", max(0, 1 - ratio))
     }
     let function = animation?.timingFunction
+    if function === Motion.linear { return ("linear", 0) }
     return (function === Motion.easeOut ? "easeOut" : "other", 0)
   }
 
@@ -297,7 +308,7 @@ final class MotionLedger: NSObject, CAAnimationDelegate {
             "kind": .string($0.kind.rawValue), "purpose": .string($0.kind.purpose),
             "target": .string($0.target), "runId": .string($0.runId),
             "surface": .string($0.surface), "keyPaths": .array([.string($0.keyPath)]),
-            "curve": .string($0.curve),
+            "curve": .string($0.curve), "durationS": .number($0.durationS),
           ]
         }),
     ]

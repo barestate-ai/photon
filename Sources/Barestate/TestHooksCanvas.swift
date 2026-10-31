@@ -79,6 +79,7 @@ extension AppController {
             .number(($0.doubleValue / zoom * 1e4).rounded() / 1e4)
           }),
         "cap": .string(line.lineCap == .round ? "round" : "other"),
+        "dashPhase": .number(((line.presentation() ?? line).lineDashPhase * 1e3).rounded() / 1e3),
       ]
     }
     let titleFrame = frame(view.titleField.frame)

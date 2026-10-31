@@ -72,6 +72,9 @@ enum Motion {
   /// cubic-bezier(0.23, 1, 0.32, 1): the one curve every non-spring animation uses.
   static let easeOut = CAMediaTimingFunction(controlPoints: 0.23, 1, 0.32, 1)
 
+  /// Only the ambient loops (the trail's drift, the orb's orbit) run uneased.
+  static let linear = CAMediaTimingFunction(name: .linear)
+
   static let press: CFTimeInterval = 0.10
   static let pressRelease: CFTimeInterval = 0.14
   static let hover: CFTimeInterval = 0.12
@@ -101,6 +104,11 @@ enum Motion {
   static let pulseHalfCycle: CFTimeInterval = 0.7
   static let pulseLowOpacity: Float = 0.45
   static let completionRing: CFTimeInterval = 0.30
+  /// One dash period of the newest Muse trail while its run works: slow enough to read as ambient.
+  static let trailFlowPeriod: CFTimeInterval = 1.2
+  /// One orbit of the thinking orb: patient while Muse thinks, brisk while an action runs.
+  static let orbThink: CFTimeInterval = 2.4
+  static let orbWork: CFTimeInterval = 0.9
   static let completionDotScale: CGFloat = 1.35
   static let completionRingScale: CGFloat = 1.04
   static let readyIconScale: CGFloat = 0.9

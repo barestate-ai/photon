@@ -23,6 +23,7 @@ final class WindowRootView: NSView {
   let flightView = FlightView()
   let launcher = LauncherView()
   let approvalCard = ApprovalCardView()
+  let orb = ThinkingOrbView()
   let activity = RunActivityView()
   let phoneChip = PhoneChipView()
   private(set) var canvasView: CanvasView?
@@ -33,6 +34,8 @@ final class WindowRootView: NSView {
   private(set) var focusLayout = FocusLayout.make(size: .zero, left: 0, right: 0)
   private let notice = NSTextField(labelWithString: "")
   private var noticeTimer: Task<Void, Never>?
+  /// Hidden in the model, still fading out on screen.
+  private var noticeLeaving = false
   private let mark = NSImageView()
   private let wordmark = NSTextField(labelWithString: "Photon")
   private let compactChip = FlippedView()
@@ -56,6 +59,8 @@ final class WindowRootView: NSView {
     notice.textColor = Design.ink
     notice.alignment = .center
     notice.isHidden = true
+    notice.wantsLayer = true
+    notice.layer?.opacity = 0
     notice.setAccessibilityElement(false)
     compactKey.textColor = Design.muted
     compactChip.addSubview(compactKey)
@@ -66,7 +71,7 @@ final class WindowRootView: NSView {
     }
     for view in [
       mark, wordmark, container, caption, notice, commandButton, compactChip, findBar,
-      approvalCard, phoneChip, activity, launcher,
+      approvalCard, phoneChip, activity, launcher, orb,
     ]
       as [NSView]
     {
@@ -201,21 +206,78 @@ final class WindowRootView: NSView {
     MotionLedger.shared.start(.firstRun, target: "overview", parts)
   }
 
-  /// A short message in the identity row, clear of the page.
+  /// A short message in the identity row, clear of the page. A hidden notice has opacity 0.
   func showNotice(_ text: String?) {
     noticeTimer?.cancel()
-    notice.stringValue = text ?? ""
-    notice.isHidden = text == nil
+    guard let text else {
+      hideNotice()
+      return
+    }
+    noticeLeaving = false
+    notice.stringValue = text
+    notice.isHidden = false
     notice.sizeToFit()
     layoutChildren()
-    guard text != nil else { return }
+    fadeNotice(to: 1)
     noticeTimer = Task { [weak self] in
       do { try await Task.sleep(for: .seconds(4)) } catch { return }
       self?.showNotice(nil)
     }
   }
 
-  var noticeText: String? { notice.isHidden ? nil : notice.stringValue }
+  private func hideNotice() {
+    guard !notice.isHidden, !noticeLeaving else { return }
+    noticeLeaving = true
+    fadeNotice(to: 0) { [weak self] in self?.finishNotice() }
+  }
+
+  private func finishNotice() {
+    noticeLeaving = false
+    MotionLedger.shared.cancel(.notice)
+    notice.layer?.opacity = 0
+    notice.stringValue = ""
+    notice.isHidden = true
+    notice.sizeToFit()
+    layoutChildren()
+  }
+
+  /// The camera's own move or landing already carries a notice that appears with it, so a fade
+  /// starts only on an idle canvas: it would hold the overview toggle's settle otherwise.
+  private var cameraIdle: Bool { camera.map { !$0.isMoving && $0.layerKind == nil } ?? true }
+
+  /// What Muse is doing, beside the command button; nil hides the orb. Fades wait for an idle
+  /// camera, like the notice.
+  func setOrb(_ next: (run: String, working: Bool)?) {
+    if let next {
+      orb.show(run: next.run, working: next.working, animated: cameraIdle)
+    } else {
+      orb.hide(animated: cameraIdle)
+    }
+  }
+
+  private func fadeNotice(to target: Float, then done: (() -> Void)? = nil) {
+    guard let layer = notice.layer else { return }
+    let from = (Motion.current(layer, "opacity") as? NSNumber)?.floatValue ?? 0
+    layer.opacity = target
+    guard cameraIdle, from != target else {
+      MotionLedger.shared.cancel(.notice)
+      done?()
+      return
+    }
+    let duration = MotionLedger.shared.reduced() ? Motion.reducedFade : Motion.fadeSmall
+    MotionLedger.shared.start(
+      .notice, target: "notice",
+      [
+        .init(
+          layer: layer, key: "notice.fade",
+          animation: Motion.ease("opacity", from: from, to: target, duration: duration))
+      ]
+    ) { finished in
+      if finished { done?() }
+    }
+  }
+
+  var noticeText: String? { notice.isHidden || noticeLeaving ? nil : notice.stringValue }
   var noticeFrame: NSRect { notice.frame }
 
   private var compactButton = false
@@ -226,6 +288,37 @@ final class WindowRootView: NSView {
     compactButton = compact
     commandButton.isHidden = compact || approvalCovers
     compactChip.isHidden = !compact
+  }
+
+  /// The button fades while an approval card covers it and comes back with the card gone. The
+  /// model is final at once; only what is on screen follows (hit tests included: the card overlaps
+  /// the button anyway). Compact, the chip stands in and nothing animates.
+  private func setApprovalCovers(_ covers: Bool) {
+    guard covers != approvalCovers else { return }
+    approvalCovers = covers
+    guard let layer = commandButton.layer else { return }
+    let from = (Motion.current(layer, "opacity") as? NSNumber)?.floatValue ?? 1
+    let target: Float = covers ? 0 : 1
+    layer.opacity = target
+    guard !compactButton else { return }
+    commandButton.isHidden = false
+    guard cameraIdle else {
+      MotionLedger.shared.cancel(.buttonFade)
+      commandButton.isHidden = covers
+      return
+    }
+    let duration = MotionLedger.shared.reduced() ? Motion.reducedFade : Motion.fadeSmall
+    MotionLedger.shared.start(
+      .buttonFade, target: "commandButton",
+      [
+        .init(
+          layer: layer, key: "cover.fade",
+          animation: Motion.ease("opacity", from: from, to: target, duration: duration))
+      ]
+    ) { [weak self] finished in
+      guard let self, finished else { return }
+      commandButton.isHidden = compactButton || approvalCovers
+    }
   }
 
   // MARK: Approval
@@ -260,8 +353,7 @@ final class WindowRootView: NSView {
 
   private func uncoverBottom() {
     caption.alphaValue = 1
-    approvalCovers = false
-    commandButton.isHidden = compactButton
+    setApprovalCovers(false)
   }
 
   /// Puts the card under its anchor, inside the window, clear of the live page. False when there
@@ -305,10 +397,9 @@ final class WindowRootView: NSView {
     approvalCard.frame.origin = NSPoint(x: x.rounded(), y: y.rounded())
     let frame = approvalCard.frame
     caption.alphaValue = anchor.focused && frame.intersects(caption.frame) ? 0 : 1
-    approvalCovers =
+    setApprovalCovers(
       frame.maxY + 8 > commandButton.frame.minY && frame.minX < commandButton.frame.maxX
-      && frame.maxX > commandButton.frame.minX
-    commandButton.isHidden = compactButton || approvalCovers
+        && frame.maxX > commandButton.frame.minX)
     return true
   }
 
@@ -345,6 +436,10 @@ final class WindowRootView: NSView {
       width: chip.width, height: chip.height)
     compactKey.frame.origin = NSPoint(
       x: (chip.width - compactKey.frame.width) / 2, y: (chip.height - compactKey.frame.height) / 2)
+    let anchor = compactButton ? compactChip.frame : commandButton.frame
+    orb.frame = NSRect(
+      x: anchor.minX - 8 - ThinkingOrbView.size, y: anchor.midY - ThinkingOrbView.size / 2,
+      width: ThinkingOrbView.size, height: ThinkingOrbView.size)
     findBar.fit(width: min(FindBarView.width, max(0, page.width - 16)))
     findBar.frame.origin = NSPoint(
       x: max(page.minX + 8, page.maxX - 8 - findBar.frame.width), y: page.minY + 8)

@@ -80,7 +80,9 @@ final class RunActivityController {
 extension AppController {
   func activityState() -> JSON {
     guard let view = root?.activity else { return .null }
-    guard let shown = activity.shown else { return ["open": false] }
+    guard let shown = activity.shown else {
+      return ["open": false, "visible": .bool(!view.isHidden)]
+    }
     func button(_ control: ApprovalButton) -> JSON {
       [
         "label": .string(control.accessibilityLabel() ?? ""), "enabled": .bool(control.isEnabled),
@@ -88,7 +90,8 @@ extension AppController {
       ]
     }
     return [
-      "open": true, "runId": .string(shown.runId), "prompt": .string(shown.prompt),
+      "open": true, "visible": .bool(!view.isHidden), "runId": .string(shown.runId),
+      "prompt": .string(shown.prompt),
       "status": .string(shown.status), "reason": shown.reason.map { .string($0) } ?? .null,
       "entries": .array(
         shown.entries.map {

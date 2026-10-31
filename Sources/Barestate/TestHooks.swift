@@ -65,6 +65,7 @@ func registerTestHooks(
       "window": controller.windowState(),
       "about": controller.aboutState(),
       "commandButton": controller.commandButtonState(),
+      "orb": controller.orbState(),
       "caption": controller.captionState(),
       "presentation": .string(controller.presentation.rawValue),
       "cefBrowserCount": .number(Double(controller.cefBrowserCount)),

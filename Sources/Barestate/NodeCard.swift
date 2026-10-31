@@ -126,8 +126,15 @@ final class NodeCard {
       }
       image.contentsScale = next.scale
     }
+    var arriving = false
     if let newImage {
-      if animated, shown != nil { crossfade() }
+      if animated, shown != nil {
+        crossfade()
+      } else {
+        // `look` is empty until the card is first drawn and again after `dropImage`, so a card
+        // that comes back from a pan gets its image without a fade.
+        arriving = animated && look.scale != 0 && !look.hasImage
+      }
       image.contents = newImage
       shown = newImage
     } else if !next.hasImage {
@@ -148,6 +155,7 @@ final class NodeCard {
     image.opacity = opacity
     placeholderTitle.isHidden = next.hasImage
     placeholderOrigin.isHidden = next.hasImage
+    if arriving { fadeInFirstPreview(to: opacity) }
     placeholderTitle.string = Self.attributed(
       next.title, Fonts.manrope(14, weight: 500), Design.ink, align: .center)
     placeholderOrigin.string = Self.attributed(
@@ -204,6 +212,37 @@ final class NodeCard {
     fade.timingFunction = Motion.easeOut
     MotionLedger.shared.start(
       .previewCrossfade, target: id, [.init(layer: image, key: "contents", animation: fade)])
+  }
+
+  /// The first preview dissolves the placeholder text into the image. A hidden layer shows no
+  /// animation, so the placeholders stay on until the fade is over.
+  private func fadeInFirstPreview(to opacity: Float) {
+    let duration = MotionLedger.shared.reduced() ? Motion.reducedFade : Motion.crossfade
+    let placeholders = [placeholderTitle, placeholderOrigin]
+    for text in placeholders {
+      text.isHidden = false
+      text.opacity = 0
+    }
+    var parts: [MotionLedger.Part] = [
+      .init(
+        layer: image, key: "opacity",
+        animation: Motion.ease("opacity", from: 0, to: opacity, duration: duration))
+    ]
+    parts += placeholders.map {
+      .init(
+        layer: $0, key: "opacity",
+        animation: Motion.ease("opacity", from: 1, to: 0, duration: duration))
+    }
+    MotionLedger.shared.start(.previewCrossfade, target: id, parts) { [weak self] _ in
+      guard let self else { return }
+      CATransaction.begin()
+      CATransaction.setDisableActions(true)
+      for text in placeholders {
+        text.isHidden = look.hasImage
+        text.opacity = 1
+      }
+      CATransaction.commit()
+    }
   }
 
   /// A stale preview dims, a fresh one comes back: the card must not look current when it is not.

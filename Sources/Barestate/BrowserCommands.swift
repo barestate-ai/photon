@@ -66,6 +66,14 @@ extension AppController {
     launcher.tabsChanged()
   }
 
+  /// The run the thinking orb follows: the newest one waiting for the model or acting. A takeover
+  /// stops the run (takenOver), so an in-progress run here always still holds its page. Waiting
+  /// for an approval is the card's moment, not the orb's.
+  func refreshOrb() {
+    let run = runs.runs.last { $0.state == .pending || $0.state == .running }
+    root?.setOrb(run.map { ($0.id, $0.steps.last?.endedAt == nil && $0.steps.last != nil) })
+  }
+
   // MARK: Page events from CEF
 
   /// `commits` marks the events that follow a committed navigation (address, title): only they

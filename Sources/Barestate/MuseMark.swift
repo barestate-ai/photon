@@ -48,14 +48,22 @@ final class MuseMark {
     let before = (state, self.text)
     (state, self.text) = (next, text)
     guard animated, !text.isEmpty, text != before.1 else { return }
-    let fade = Motion.ease(
-      "opacity", from: 0, to: 1, duration: reduced ? Motion.reducedFade : Motion.fadeSmall)
+    func fade() -> CABasicAnimation {
+      Motion.ease(
+        "opacity", from: 0, to: 1, duration: reduced ? Motion.reducedFade : Motion.fadeSmall)
+    }
     guard next == .completed, before.0?.isInProgress == true else {
       ledger.start(
-        .museLabel, target: loopId, [.init(layer: label, key: "muse.label", animation: fade)])
+        .museLabel, target: loopId, [.init(layer: label, key: "muse.label", animation: fade())])
+      // The dot is part of the same status: it arrives with the label, not ahead of it. The pulse
+      // loop has its own key and takes over once this ends.
+      if before.1.isEmpty {
+        ledger.start(
+          .statusDot, target: loopId, [.init(layer: dot, key: "muse.dot.in", animation: fade())])
+      }
       return
     }
-    complete(label: fade, ring: ring, reduced: reduced)
+    complete(label: fade(), ring: ring, reduced: reduced)
   }
 
   /// The surface left the screen: its loop and any completion go and what it last showed is

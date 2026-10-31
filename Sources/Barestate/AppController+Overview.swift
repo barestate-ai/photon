@@ -107,6 +107,7 @@ extension AppController {
   /// Redraws everything that shows the graph: the overview and the focused page's context.
   func refreshGraphViews() {
     guard let root else { return }
+    refreshOrb()
     root.setContext(activeNodeId.map { canvas.graph.context(of: $0) } ?? ([], []))
     root.focusContext?.refresh()
     root.canvasView?.refresh()
