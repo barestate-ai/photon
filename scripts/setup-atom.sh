@@ -2,7 +2,8 @@
 # Installs Atom, the local click-grounding model Photon uses before it asks Muse.
 #   setup-atom.sh [runtime|model|all]   default all
 #   setup-atom.sh pack                  repo only: write dist/atom-tinyclick-4bit-v1.tar.gz
-# Overrides: BARESTATE_RUNTIME_DIR, BARESTATE_ATOM_MODEL, ATOM_ARCHIVE (a local archive).
+# Overrides: BARESTATE_RUNTIME_DIR, BARESTATE_ATOM_MODEL, ATOM_ARCHIVE (a local archive),
+#   ATOM_URL (model archive URL; default the public R2 host, GitHub release as fallback).
 set -euo pipefail
 export PYTHONDONTWRITEBYTECODE=1 # the bundled copy is sealed by codesign
 
@@ -13,6 +14,8 @@ SUPPORT="$HOME/Library/Application Support/Barestate"
 RUNTIME_DIR="${BARESTATE_RUNTIME_DIR:-$SUPPORT/Runtime}"
 MODEL_DIR="${BARESTATE_ATOM_MODEL:-$SUPPORT/models/atom/tinyclick-4bit-v1/tinyclick-4bit}"
 ASSET="atom-tinyclick-4bit-v1.tar.gz"
+# Public Cloudflare R2 host; the private GitHub release below is the documented fallback.
+ATOM_URL="${ATOM_URL:-https://download.barestate.xyz/$ASSET}"
 RELEASE="v0.1.0"
 REPO="barestate-ai/photon"
 
@@ -50,7 +53,13 @@ runtime() {
   BARESTATE_RUNTIME_DIR="$RUNTIME_DIR" "$ATOM/bootstrap.sh"
 }
 
-fetch() { # <dir>: the archive from the private release through gh when logged in, else public curl
+fetch() { # <dir>: the public archive URL, falling back to the private GitHub release
+  if curl --fail --remove-on-error --location --silent --show-error --proto '=https' --tlsv1.2 \
+    "$ATOM_URL" -o "$1/$ASSET"; then
+    return
+  fi
+  rm -f "$1/$ASSET" # a partial download must not defeat the fallback
+  echo "setup-atom: $ATOM_URL failed; trying the GitHub release" >&2
   if command -v gh >/dev/null && gh auth status >/dev/null 2>&1; then
     gh release download "$RELEASE" --repo "$REPO" --pattern "$ASSET" --dir "$1" >&2
   else
