@@ -1,0 +1,11 @@
+<!doctype html>
+<html lang="en">
+<head><meta charset="utf-8"><title>Edge fixture</title></head>
+<body>
+  <div style="opacity:0"><button id="veiled">Veiled action</button></div>
+  <form id="outside" onsubmit="return false"></form>
+  <button form="outside">Continue</button>
+  <button type="button">Plain action</button>
+  <script>Object.defineProperty(window, "devicePixelRatio", { value: 1e30 });</script>
+</body>
+</html>

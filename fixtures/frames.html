@@ -1,0 +1,43 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <title>Frames and closed shadow roots</title>
+  <style>
+    body { margin: 24px; font: 16px sans-serif; }
+    .row { display: flex; gap: 8px; align-items: flex-start; }
+    #field { min-width: 120px; border: 1px solid #888; }
+    iframe { display: block; width: 320px; height: 70px; border: 1px solid #888; margin: 8px 0; }
+  </style>
+</head>
+<body>
+  <h1>Frames fixture</h1>
+  <p id="status">Nothing removed</p>
+  <iframe id="same" title="Same-origin frame" src="frame.html"></iframe>
+  <iframe id="cross" title="Cross-origin frame"></iframe>
+  <iframe id="roled" role="button" title="Roled frame" src="frame.html">Unsupported browser</iframe>
+  <div class="row">
+    <div id="host" role="button" tabindex="0" aria-label="Closed widget"></div>
+    <div id="field" role="textbox" tabindex="0" contenteditable="true" aria-label="Notes widget"></div>
+    <input id="plain" aria-label="Plain field">
+  </div>
+  <script>
+    const beacon = (query) => { new Image().src = `/__beacon?${query}&n=${Math.random()}`; };
+    // The frame's origin differs by host name, not port: localhost against 127.0.0.1.
+    const other = location.hostname === "localhost" ? "127.0.0.1" : "localhost";
+    document.getElementById("cross").src = `${location.protocol}//${other}:${location.port}/frame.html`;
+    // Only the page's own closure can reach into a closed root.
+    const inner = document.getElementById("host").attachShadow({ mode: "closed" });
+    inner.innerHTML = "<button type='button'>Delete</button>";
+    inner.firstChild.onclick = () => beacon("closed=1");
+    window.focusClosed = () => inner.firstChild.focus();
+    // An editable host whose closed root only slots its text: a key it receives is unreadable from outside.
+    const field = document.getElementById("field");
+    field.attachShadow({ mode: "closed" }).innerHTML = "<slot></slot>";
+    window.focusField = () => field.focus();
+    window.fieldValue = () => field.textContent;
+    addEventListener("click", (e) => beacon(`click=${e.target.id || e.target.tagName}`), true);
+    addEventListener("load", () => requestAnimationFrame(() => beacon("ready=1")));
+  </script>
+</body>
+</html>

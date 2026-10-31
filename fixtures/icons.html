@@ -1,0 +1,30 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <title>Icons fixture</title>
+  <style>
+    body { margin: 0; font: 16px sans-serif; }
+    /* Icon-only buttons: the page shows a glyph and no words, so no instruction matches the
+       accessible name and only a model looking at the screen can choose one. */
+    .icon { position: absolute; top: 60px; width: 90px; height: 70px; font-size: 40px; }
+    #pad { position: absolute; left: 20px; top: 260px; width: 400px; height: 120px; background: #eef3f3; }
+  </style>
+</head>
+<body>
+  <button type="button" id="gear" class="icon" style="left: 20px" aria-label="Gear" title="settings">⚙</button>
+  <button type="button" id="pen" class="icon" style="left: 140px" aria-label="Pen" title="compose">✎</button>
+  <button type="button" id="bin" class="icon" style="left: 260px" aria-label="Bin" title="delete draft">🗑</button>
+  <output id="effect" style="position: absolute; left: 20px; top: 180px; width: 300px"></output>
+  <div id="pad">Pad</div>
+  <script>
+    const beacon = (query) => { new Image().src = `/__beacon?${query}&n=${Math.random()}`; };
+    let clicks = 0;
+    addEventListener("click", (e) => {
+      effect.textContent = `click ${++clicks} on ${e.target.id || e.target.tagName}`;
+      beacon(`click=${e.target.id || e.target.tagName}`);
+    }, true);
+    addEventListener("load", () => requestAnimationFrame(() => beacon("ready=1")));
+  </script>
+</body>
+</html>

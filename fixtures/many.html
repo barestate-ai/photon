@@ -1,0 +1,16 @@
+<!doctype html>
+<html lang="en">
+<head><meta charset="utf-8"><title>Many elements fixture</title></head>
+<body>
+  <h1>Many elements</h1>
+  <div id="host"></div>
+  <script>
+    const host = document.getElementById("host");
+    for (let i = 0; i < 50; i++) {
+      host.insertAdjacentHTML("beforeend",
+        `<p>Row ${i} <button>Action ${i}</button> <a href="/article.html?n=${i}">Link ${i}</a> ` +
+        `<input aria-label="Field ${i}"></p>`);
+    }
+  </script>
+</body>
+</html>

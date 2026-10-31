@@ -1,0 +1,46 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <title>Permission fixture</title>
+  <style>
+    body { margin: 24px; font: 16px sans-serif; }
+    #pad { height: 100vh; background: #eef3f3; }
+  </style>
+</head>
+<body>
+  <h1>Permission fixture</h1>
+  <p id="status">Nothing deleted</p>
+  <button type="button" id="delete">Delete draft</button>
+  <button type="button" id="remove">Dismiss item</button>
+  <button type="button" id="count">Count</button>
+  <button type="button" id="inert">Inert</button>
+  <label for="field">Name</label>
+  <input id="field" type="text">
+  <label for="secret">Password</label>
+  <input id="secret" type="password">
+  <!-- Fills the middle of the page, so a synthetic human click on the tab always lands here. -->
+  <div id="pad">Pad</div>
+  <script>
+    const beacon = (query) => { new Image().src = `/__beacon?${query}&n=${Math.random()}`; };
+    const counted = { count: 0 };
+    document.getElementById("delete").onclick = () => {
+      document.getElementById("status").textContent = "Draft deleted";
+    };
+    document.getElementById("remove").onclick = (e) => e.target.remove();
+    document.getElementById("count").onclick = () => {
+      counted.count += 1;
+      document.getElementById("status").textContent = `Counted ${counted.count}`;
+    };
+    // ?tagInert: Inert's only effect is an attribute no screenshot shows.
+    if (new URLSearchParams(location.search).has("tagInert")) {
+      document.getElementById("inert").onclick = (e) => e.target.setAttribute("data-tagged", "yes");
+    }
+    addEventListener("click", (e) => beacon(`click=${e.target.id || e.target.tagName}`), true);
+    addEventListener("input", (e) => {
+      beacon(`input=${e.target.id}&v=${encodeURIComponent(e.target.value)}`);
+    }, true);
+    addEventListener("load", () => requestAnimationFrame(() => beacon("ready=1")));
+  </script>
+</body>
+</html>

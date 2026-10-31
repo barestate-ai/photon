@@ -1,0 +1,53 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <title>Bound target fixture</title>
+  <style>
+    body { margin: 24px; font: 16px sans-serif; }
+  </style>
+</head>
+<body>
+  <h1>Bound target fixture</h1>
+  <p id="status">Nothing removed</p>
+  <label for="field">Name</label>
+  <input id="field" type="text">
+  <label for="nick">Nickname</label>
+  <!-- An anti-autofill pattern: the field only becomes a password field once it has the focus. -->
+  <input id="nick" type="text" onfocus="this.type = 'password'">
+  <form id="confirm">
+    <label for="typed">Type the account name</label>
+    <input id="typed" type="text">
+    <button type="submit" id="wipe">Delete account</button>
+  </form>
+  <!-- Joins the confirm form only once it has the focus. -->
+  <input id="late" type="text" aria-label="Late" onfocus="this.setAttribute('form', 'confirm')">
+  <div id="host"></div>
+  <button type="button" id="item1" class="item">Delete item</button>
+  <button type="button" id="item2" class="item">Delete item</button>
+  <script>
+    const beacon = (query) => { new Image().src = `/__beacon?${query}&n=${Math.random()}`; };
+    const effects = { submits: 0, inner: 0, items: [] };
+    const shadow = document.getElementById("host").attachShadow({ mode: "open" });
+    shadow.innerHTML = `<form id="inner"><input id="innerField" aria-label="Inner">
+      <button type="submit">Delete account</button></form>`;
+    shadow.getElementById("inner").onsubmit = (e) => { e.preventDefault(); effects.inner += 1; };
+    document.getElementById("confirm").onsubmit = (e) => {
+      e.preventDefault();
+      effects.submits += 1;
+      document.getElementById("status").textContent = `Account removed ${effects.submits}`;
+    };
+    for (const item of document.querySelectorAll(".item")) {
+      item.onclick = () => {
+        effects.items.push(item.id);
+        document.getElementById("status").textContent = `Item removed ${item.id}`;
+      };
+    }
+    addEventListener("click", (e) => beacon(`click=${e.target.id || e.target.tagName}`), true);
+    addEventListener("input", (e) => {
+      beacon(`input=${e.target.id}&v=${encodeURIComponent(e.target.value)}`);
+    }, true);
+    addEventListener("load", () => requestAnimationFrame(() => beacon("ready=1")));
+  </script>
+</body>
+</html>

@@ -1,0 +1,17 @@
+<!doctype html>
+<html lang="en">
+<head><meta charset="utf-8"><title>Band fixture</title></head>
+<body style="margin:0">
+  <!-- ?c=<hex colour>&t=<title>: a page that is one solid colour, so a preview of it is checkable by pixel. -->
+  <div id="band" style="position:fixed;inset:0"></div>
+  <script>
+    const query = new URLSearchParams(location.search);
+    document.title = query.get("t") || "Band";
+    window.__pointer = 0;
+    for (const kind of ["wheel", "mousedown", "mouseup", "mousemove", "click"]) {
+      window.addEventListener(kind, () => window.__pointer++, true);
+    }
+    document.getElementById("band").style.background = "#" + (query.get("c") || "336699");
+  </script>
+</body>
+</html>

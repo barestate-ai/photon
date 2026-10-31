@@ -1,0 +1,48 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <title>Kinds fixture</title>
+  <style>
+    body { margin: 24px; font: 16px sans-serif; }
+    .tall { height: 3000px; }
+  </style>
+</head>
+<body>
+  <h1>Kinds fixture</h1>
+  <label for="pick">Color</label>
+  <select id="pick"><option value="a">Alpha</option><option value="b">Beta</option><option value="c">Gamma</option></select>
+  <label for="sticky">Sticky</label>
+  <select id="sticky"><option value="a">Alpha</option><option value="b">Beta</option></select>
+  <form id="form">
+    <label for="q">Query</label>
+    <input id="q" name="q" type="text">
+    <button id="go" type="submit">Go</button>
+  </form>
+  <div class="tall"></div>
+  <output id="effect"></output>
+  <script>
+    const beacon = (query) => { new Image().src = `/__beacon?${query}&n=${Math.random()}`; };
+    // Events in the order the page saw them (beacons can overtake one another on the wire).
+    const seen = [];
+    // A page script that replaces the value setter sees only calls made from its own world.
+    const original = Object.getOwnPropertyDescriptor(HTMLSelectElement.prototype, "value");
+    Object.defineProperty(HTMLSelectElement.prototype, "value", {
+      configurable: true,
+      get() { return original.get.call(this); },
+      set(v) { seen.push("spy:value"); original.set.call(this, v); },
+    });
+    // A page that refuses the change as soon as it hears it.
+    sticky.addEventListener("change", () => { sticky.value = "a"; });
+    pick.addEventListener("input", (e) => seen.push(`input:${e.target.value}`));
+    pick.addEventListener("change", (e) => seen.push(`change:${e.target.value}`));
+    form.addEventListener("submit", (e) => {
+      e.preventDefault();
+      seen.push(`submit:${q.value}`);
+      effect.textContent = `submitted ${q.value}`;
+    });
+    addEventListener("keydown", (e) => seen.push(`keydown:${e.key}:${e.target.id}`), true);
+    addEventListener("load", () => requestAnimationFrame(() => beacon("ready=1")));
+  </script>
+</body>
+</html>

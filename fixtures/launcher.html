@@ -1,0 +1,23 @@
+<!doctype html>
+<html lang="en">
+<head><meta charset="utf-8"><title>Launcher fixture</title></head>
+<body style="margin:0">
+  <input id="box" aria-label="Box" value="keep">
+  <div style="height:3000px">Launcher fixture</div>
+  <script>
+    // ?t=<title> names the tab, so one page stands in for any tab a test needs.
+    const title = new URLSearchParams(location.search).get("t");
+    if (title) document.title = title;
+    // Survive only while this document does; any key or pointer event that reaches the page counts.
+    window.__nonce = Math.random().toString(36).slice(2);
+    window.__keys = 0;
+    window.__pointer = 0;
+    for (const type of ["keydown", "keyup", "keypress", "input"]) {
+      addEventListener(type, () => { window.__keys += 1; }, true);
+    }
+    for (const type of ["mousedown", "mouseup", "click"]) {
+      addEventListener(type, () => { window.__pointer += 1; }, true);
+    }
+  </script>
+</body>
+</html>

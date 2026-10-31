@@ -1,0 +1,42 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <title>Targets fixture</title>
+  <style>
+    body { margin: 0; font: 15px sans-serif; }
+    .abs { position: absolute; width: 110px; height: 48px; box-sizing: border-box; padding: 12px 6px;
+      border: 1px solid #567; background: #f4f7f9; color: #123; text-align: center; text-decoration: none; }
+  </style>
+</head>
+<body>
+  <a id="pricing" class="abs" href="#pricing" style="left: 8px; top: 8px">Pricing</a>
+  <button id="docs" class="abs" style="left: 126px; top: 8px">Docs</button>
+  <button id="blog" class="abs" style="left: 244px; top: 8px">Blog</button>
+  <a id="careers" class="abs" href="#careers" style="left: 362px; top: 8px">Careers</a>
+  <button id="contact" class="abs" style="left: 8px; top: 70px">Contact</button>
+  <button id="sign-in" class="abs" style="left: 126px; top: 70px">Sign in</button>
+  <a id="sign-up" class="abs" href="#sign-up" style="left: 244px; top: 70px">Sign up</a>
+  <button id="download" class="abs" style="left: 362px; top: 70px">Download</button>
+  <button id="search" class="abs" style="left: 8px; top: 132px">Search</button>
+  <a id="cart" class="abs" href="#cart" style="left: 126px; top: 132px">Cart</a>
+  <button id="checkout" class="abs" style="left: 244px; top: 132px">Checkout</button>
+  <button id="profile" class="abs" style="left: 362px; top: 132px">Profile</button>
+  <a id="settings" class="abs" href="#settings" style="left: 8px; top: 194px">Settings</a>
+  <button id="help" class="abs" style="left: 126px; top: 194px">Help</button>
+  <button id="support" class="abs" style="left: 244px; top: 194px">Support</button>
+  <a id="status" class="abs" href="#status" style="left: 362px; top: 194px">Status</a>
+  <button id="changelog" class="abs" style="left: 8px; top: 256px">Changelog</button>
+  <button id="security" class="abs" style="left: 126px; top: 256px">Security</button>
+  <a id="privacy" class="abs" href="#privacy" style="left: 244px; top: 256px">Privacy</a>
+  <button id="terms" class="abs" style="left: 362px; top: 256px">Terms</button>
+  <button id="subscribe" class="abs" style="left: 8px; top: 318px">Subscribe</button>
+  <a id="share" class="abs" href="#share" style="left: 126px; top: 318px">Share</a>
+  <button id="export" class="abs" style="left: 244px; top: 318px">Export</button>
+  <button id="archive" class="abs" style="left: 362px; top: 318px">Archive</button>
+  <script>
+    const beacon = (query) => { new Image().src = `/__beacon?${query}&n=${Math.random()}`; };
+    addEventListener("load", () => requestAnimationFrame(() => beacon("ready=1")));
+  </script>
+</body>
+</html>

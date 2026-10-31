@@ -1,0 +1,31 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <title>Popups fixture</title>
+  <style>
+    body { margin: 0 }
+    a, button { position: absolute; left: 20px; width: 200px; height: 30px; display: block; margin: 0 }
+  </style>
+</head>
+<body>
+  <a id="blank" style="top: 20px" href="/launcher.html?t=blank-popup" target="_blank">target blank</a>
+  <button id="open" style="top: 70px" onclick="window.open('/opener.html')">window.open</button>
+  <a id="cmd" style="top: 120px" href="/launcher.html?t=cmd-click">plain link</a>
+  <a id="plain" style="top: 170px" href="/launcher.html?t=in-tab">in this tab</a>
+  <a id="noopener" style="top: 220px" href="/launcher.html?t=noopener-popup" target="_blank" rel="noopener">noopener</a>
+  <script>
+    // ?t=<title> names the tab, so one page stands in for any root a test needs.
+    const title = new URLSearchParams(location.search).get("t");
+    if (title) document.title = title;
+    window.__message = null;
+    addEventListener("message", (e) => { window.__message = e.data; });
+    // Input sent before the page has painted its first frame can be dropped.
+    addEventListener("load", () => {
+      requestAnimationFrame(() => requestAnimationFrame(() => {
+        new Image().src = "/__beacon?ready=" + encodeURIComponent(title || "");
+      }));
+    });
+  </script>
+</body>
+</html>

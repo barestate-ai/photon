@@ -1,0 +1,14 @@
+<!doctype html>
+<html lang="en">
+<head><meta charset="utf-8"><title>First paint fixture</title></head>
+<body>
+  <h1>First paint fixture</h1>
+  <script>
+    // Reports performance.timeOrigin + first-paint (epoch ms) so a harness can measure launch to paint.
+    addEventListener("load", () => setTimeout(() => {
+      const paint = performance.getEntriesByType("paint")[0];
+      new Image().src = "/__beacon?fp=" + (performance.timeOrigin + paint.startTime).toFixed(1);
+    }, 400));
+  </script>
+</body>
+</html>

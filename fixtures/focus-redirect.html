@@ -1,0 +1,29 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <title>Focus redirect fixture</title>
+  <style>
+    body { margin: 24px; font: 16px sans-serif; }
+    #pad { height: 100vh; background: #eef3f3; }
+  </style>
+</head>
+<body>
+  <h1>Focus redirect fixture</h1>
+  <label for="source">Source</label>
+  <input id="source" type="text">
+  <label for="sink">Sink</label>
+  <input id="sink" type="text">
+  <!-- Fills the middle of the page, so a synthetic human click on the tab always lands here. -->
+  <div id="pad">Pad</div>
+  <script>
+    // Focusing the source hands focus to the sink, the way a page-owned widget can.
+    const sink = document.getElementById("sink");
+    document.getElementById("source").addEventListener("focus", () => sink.focus());
+    const beacon = (query) => { new Image().src = `/__beacon?${query}&n=${Math.random()}`; };
+    addEventListener("input", (e) => {
+      beacon(`input=${e.target.id}&v=${encodeURIComponent(e.target.value)}`);
+    }, true);
+  </script>
+</body>
+</html>

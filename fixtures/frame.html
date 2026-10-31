@@ -1,0 +1,23 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <title>Embedded form</title>
+  <style>
+    body { margin: 0; font: 16px sans-serif; }
+    input { box-sizing: border-box; width: 200px; height: 30px; margin: 0; }
+  </style>
+</head>
+<body>
+  <form id="confirm">
+    <input id="card" type="text" aria-label="Card number">
+    <button type="submit">Delete account</button>
+  </form>
+  <script>
+    document.getElementById("confirm").onsubmit = (e) => {
+      e.preventDefault();
+      new Image().src = `/__beacon?submit=1&n=${Math.random()}`;
+    };
+  </script>
+</body>
+</html>

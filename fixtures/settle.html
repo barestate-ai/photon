@@ -1,0 +1,30 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <title>Settle fixture</title>
+  <style>body { margin: 24px; font: 16px sans-serif; } a, button { display: block; margin: 12px 0; }</style>
+</head>
+<body>
+  <h1>Settle fixture</h1>
+  <button id="xhr">Load</button>
+  <button id="churn">Churn</button>
+  <a id="slow" href="/slow-page?ms=3000">Slow page</a>
+  <a id="stuck" href="/hang">Stuck page</a>
+  <button id="frame">Frame</button>
+  <div id="out"></div>
+  <output id="effect"></output>
+  <script>
+    const beacon = (query) => { new Image().src = `/__beacon?${query}&n=${Math.random()}`; };
+    let clicks = 0;
+    addEventListener("click", (e) => {
+      effect.textContent = `click ${++clicks}`;
+      beacon(`click=${e.target.id}`);
+    }, true);
+    xhr.onclick = async () => { await fetch("/slow-xhr?ms=600"); out.textContent = "loaded"; };
+    frame.onclick = () => { document.body.append(Object.assign(document.createElement("iframe"), { src: "/hang" })); };
+    churn.onclick = () => { let n = 0; setInterval(() => { out.textContent = `tick ${n++}`; }, 20); };
+    addEventListener("load", () => requestAnimationFrame(() => beacon("ready=1")));
+  </script>
+</body>
+</html>

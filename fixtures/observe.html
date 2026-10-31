@@ -1,0 +1,21 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <title>Observe fixture</title>
+  <style>body { margin: 24px; font: 16px sans-serif; } .tall { height: 3000px; }</style>
+</head>
+<body>
+  <h1>Observe fixture</h1>
+  <button id="go" onclick="new Image().src='/__beacon?click=go'">Go</button>
+  <label for="name">Full name</label>
+  <input id="name" type="text">
+  <a id="more" href="/article.html">More details</a>
+  <button id="ghost" hidden>Hidden action</button>
+  <button id="faded" style="opacity:0">Faded action</button>
+  <input id="secret" type="password" aria-label="Password">
+  <form onsubmit="return false"><button id="buy" type="submit">Place order</button></form>
+  <div class="tall"></div>
+  <p id="bottom">Bottom of the page</p>
+</body>
+</html>

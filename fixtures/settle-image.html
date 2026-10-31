@@ -1,0 +1,16 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <title>Settle image fixture</title>
+</head>
+<body>
+  <h1>Settle image fixture</h1>
+  <img id="pic" src="/slow-image" alt="Held image">
+  <script>
+    const beacon = (query) => { new Image().src = `/__beacon?${query}&n=${Math.random()}`; };
+    addEventListener("DOMContentLoaded", () => beacon("dcl=1"));
+    addEventListener("load", () => beacon(`load=${pic.naturalWidth}`));
+  </script>
+</body>
+</html>

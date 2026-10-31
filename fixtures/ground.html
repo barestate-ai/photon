@@ -1,0 +1,39 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <title>Ground fixture</title>
+  <style>
+    body { margin: 0; font: 16px sans-serif; }
+    .abs { position: absolute; width: 100px; height: 40px; }
+  </style>
+</head>
+<body>
+  <button id="save" class="abs" style="left: 20px; top: 40px">Save</button>
+  <button id="save-none" class="abs" style="display: none; left: 130px; top: 40px">Save</button>
+  <button id="save-hidden" class="abs" style="visibility: hidden; left: 240px; top: 40px">Save</button>
+  <button id="save-clear" class="abs" style="opacity: 0; left: 350px; top: 40px">Save</button>
+  <span id="save-label" class="abs" style="left: 20px; top: 100px">Save</span>
+  <div id="save-div" class="abs" style="left: 130px; top: 100px; background: #ddd">Save</div>
+  <button id="cancel" class="abs" style="left: 240px; top: 100px">Cancel</button>
+  <button id="save-twin" class="abs" style="left: 350px; top: 100px">Save</button>
+  <div id="ghost" class="abs" style="opacity: 0; left: 20px; top: 160px"></div>
+  <!-- Its words live in the title, so the accessibility tree calls it "Gear" and only the point
+       check can match it to "settings". Centered at 60% / 80% of the viewport. -->
+  <button id="gear" aria-label="Gear" title="settings p300"
+    style="position: absolute; left: 60%; top: 80%; transform: translate(-50%, -50%); width: 60px; height: 40px">G</button>
+  <output id="effect" class="abs" style="left: 20px; top: 300px; width: 200px"></output>
+  <script>
+    ghost.attachShadow({ mode: "open" }).innerHTML =
+      '<button style="width: 100px; height: 40px">Save</button>';
+    const beacon = (query) => { new Image().src = `/__beacon?${query}&n=${Math.random()}`; };
+    // A visible record of each click, so a click that reached the page can be read back.
+    let clicks = 0;
+    addEventListener("click", (e) => {
+      effect.textContent = `click ${++clicks}`;
+      beacon(`click=${e.target.id || e.target.tagName}`);
+    }, true);
+    addEventListener("load", () => requestAnimationFrame(() => beacon("ready=1")));
+  </script>
+</body>
+</html>

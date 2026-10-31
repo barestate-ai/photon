@@ -1,0 +1,11 @@
+<!doctype html>
+<html lang="en">
+<head><meta charset="utf-8"><title>opener</title></head>
+<body>
+  <script>
+    // What an OAuth popup does: it needs the window that opened it.
+    document.title = window.opener ? "opener:yes" : "opener:no";
+    if (window.opener) window.opener.postMessage("popup-hello", "*");
+  </script>
+</body>
+</html>

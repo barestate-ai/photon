@@ -1,0 +1,14 @@
+<!doctype html>
+<html lang="en">
+<head><meta charset="utf-8"><title>State fixture</title></head>
+<body style="margin:0">
+  <input id="box" aria-label="Box" style="position:fixed;top:0;right:0">
+  <div style="height:3000px">State fixture</div>
+  <script>
+    // Survives only while this document does, so a reload or a recreated browser changes them.
+    window.__nonce = Math.random().toString(36).slice(2);
+    window.__resizes = 0;
+    addEventListener("resize", () => { window.__resizes += 1; });
+  </script>
+</body>
+</html>

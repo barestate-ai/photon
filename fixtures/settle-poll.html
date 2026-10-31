@@ -1,0 +1,15 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <title>Settle long-poll fixture</title>
+</head>
+<body>
+  <h1>Settle long-poll fixture</h1>
+  <script>
+    const beacon = (query) => { new Image().src = `/__beacon?${query}&n=${Math.random()}`; };
+    addEventListener("DOMContentLoaded", () => beacon("dcl=1"));
+    addEventListener("load", () => fetch("/long-poll").then((r) => r.text()).then(() => beacon("poll=done")));
+  </script>
+</body>
+</html>

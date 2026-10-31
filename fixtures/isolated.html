@@ -1,0 +1,15 @@
+<!doctype html>
+<html lang="en">
+<head><meta charset="utf-8"><title>Isolated world fixture</title></head>
+<body>
+  <h1>Isolated world</h1>
+  <p>Page text the extractor reads.</p>
+  <script>
+    window.pageSecret = "page-only";
+    // Reports the page world's globals so a harness can look for anything an extractor leaked.
+    window.report = () => {
+      new Image().src = "/__beacon?keys=" + encodeURIComponent(Object.keys(window).join(","));
+    };
+  </script>
+</body>
+</html>

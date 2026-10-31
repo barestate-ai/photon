@@ -1,0 +1,41 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <title>Act fixture</title>
+  <style>
+    body { margin: 24px; font: 16px sans-serif; }
+    #effect { display: block; min-height: 48px; margin-top: 16px; font-size: 40px; font-weight: bold; color: #0b5a63; }
+    #pad { height: 100vh; background: #eef3f3; }
+    .tall { height: 3000px; }
+  </style>
+</head>
+<body>
+  <h1>Act fixture</h1>
+  <button id="count">Count</button>
+  <button id="other">Other</button>
+  <label for="field">Name</label>
+  <input id="field" type="text">
+  <!-- The record of each click and input sits in the first viewport, where a screenshot shows it. -->
+  <output id="effect"></output>
+  <!-- Fills the middle of the page, so a synthetic human click on the tab always lands here. -->
+  <div id="pad">Pad</div>
+  <div class="tall"></div>
+  <script>
+    // Every effect is reported with the id of the element it reached, in fixture-log order.
+    const beacon = (query) => { new Image().src = `/__beacon?${query}&n=${Math.random()}`; };
+    // A visible record of each click and input, so an act that reached the page can be read back.
+    let clicks = 0;
+    addEventListener("click", (e) => {
+      effect.textContent = `click ${++clicks}`;
+      beacon(`click=${e.target.id || e.target.tagName}`);
+    }, true);
+    addEventListener("input", (e) => {
+      effect.textContent = `typed ${e.target.value}`;
+      beacon(`input=${e.target.id}&v=${encodeURIComponent(e.target.value)}`);
+    }, true);
+    // Input sent before the page has painted its first frame can be dropped.
+    addEventListener("load", () => requestAnimationFrame(() => beacon("ready=1")));
+  </script>
+</body>
+</html>
