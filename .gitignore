@@ -1,0 +1,10 @@
+.env
+.env.*
+Vendor/
+.build/
+.logs/
+dist/
+*.sqlite*
+.DS_Store
+Resources/Art
+__pycache__/
