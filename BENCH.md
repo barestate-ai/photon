@@ -215,3 +215,16 @@ python3 -u scripts/bench.py footprint --footprint-runs 2 --out .logs/pm-bench/be
 # motion CPU: app started with --test-hooks over e2e/bs.py, `top -l 6 -pid <app pid> -s 2 -stats pid,cpu`,
 # idle and with the orb, pulse and trail flow live (throwaway driver, not committed; output in .logs/pm-orb/polish-cpu.json)
 ```
+
+## Full window: enter, leave and the existing budgets (2026-11-02, D78)
+
+Entering and leaving Full window (Cmd-Return, key-down at `sendEvent` to a settled level with the motion ledger empty, `test.toggleTimings`), 20 live pages with previews, 1440x900, 60 Hz, Reduce Motion on (the instant path), `make bundle` output with `--test-hooks`. 10 discarded then 50 presses per direction, alternating, on top of the overview toggle (20 + 100) and the pan probe (5 x 2 s). Command: `python3 scripts/bench.py overview --out .logs/bench-view-full-window.json`. 1-minute load average at the start: about 9.
+
+| Measure | Limit | Result | |
+|---|---|---|---|
+| Enter Full window | p95 < 100 ms | p50 0.68 ms, p95 **1.67 ms**, max 1.91 ms, n 50 | **pass** |
+| Leave Full window | p95 < 100 ms | p50 0.66 ms, p95 **1.79 ms**, max 2.12 ms, n 50 | **pass** |
+| Overview toggle (unchanged benchmark) | p95 < 100 ms | p50 52.13 ms, p95 **71.55 ms**, max 91.79 ms, n 100 | **pass** |
+| Pan frame interval | p95 <= 20 ms | p50 16.67 ms, p95 **16.92 ms**, max 17.35 ms, n 597 | **pass** |
+
+Under Reduce Motion a Full window move is instant: one frame change of the same browser view and no ledger item, so the level is settled at the commit (about a millisecond). Without Reduce Motion the move is one `camera` item of at most 0.45 s (spring) and the timer waits for the ledger to empty; that figure is not part of this table.

@@ -81,7 +81,7 @@ scripts/release.sh          # dist/Photon-0.1.0.zip (make dist does the same)
 
 - **Overview canvas.** Every open page is a card with its own captured preview. Pan and zoom the canvas. Links and popups connect pages into a trail. Muse's own steps draw in copper.
 - **⌘T.** One launcher for URLs, web search, switching tabs, and requests for Muse, with local suggestions.
-- **Switching pages.** With many pages open, press ⌘T (or click the ⌘T button) and choose **Open pages** under Browser. It lists every open page, most recent first, by title and host. Type to filter by title or address, use ↑ ↓ and Return or click a row, and that page fills the window without reloading. Choosing the page you are already on from the overview does the same. Esc leaves everything as it was.
+- **Switching pages.** With many pages open, press ⌘T (or click the ⌘T button) and choose **Open pages** under Browser. It lists every open page, most recent first, by title and host. Type to filter by title or address, use ↑ ↓ and Return or click a row, and that page opens in Full window without reloading. Esc leaves everything as it was.
 
   ![⌘T suggestions](docs/screenshots/suggestions.png)
 
@@ -89,7 +89,8 @@ scripts/release.sh          # dist/Photon-0.1.0.zip (make dist does the same)
 
   ![A typed request](docs/screenshots/typed-request.png)
 
-- **Focused page with context.** A page fills the window; its neighbours stay visible at the edges.
+- **Focused page with context.** A click on a card in the overview focuses its page, with its neighbours at the edges. Click bare window beside the page to go back to the overview.
+- **Full window.** A page can take the whole window, below the title bar and with no neighbours, caption or wordmark. Open it with ⌘↩ (from the overview, on the selected card), the ⤢ that appears on the page's caption when the pointer is on it, a double-click on a card, or by choosing a page in **Open pages**. Leave it with ⌘↩ again, a pinch out (one level at a time: Full window, the focused page, the overview), ⌘⇧\ (straight to the overview) or the ⤡ that appears at the top right when the pointer is there. Esc still goes to the page. The same browser is shown at every level, so nothing reloads. ⌘T, ⌘F, approvals, Stop and the activity view work in Full window, ⌘1 to ⌘9 and ⌃Tab keep it, and ⌘W shows the next page in it. For the whole display use the green button, ⌃⌘F or View > Enter Full Screen: the page then covers the screen edge to edge. The first empty canvas shows a one-line hint, once.
 
   ![A focused page, with a finished Muse run and its copper trail](docs/screenshots/focused-page.png)
 

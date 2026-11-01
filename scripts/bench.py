@@ -25,8 +25,8 @@ of `all`.
 
 frontend: with exactly 20 live pages (the app's blank tab is closed once they are open) holding
 previews at 1440x900, the overview toggle (Cmd-Shift-\\
-key-down to a settled presentation, Reduce Motion on, 20 + 100 alternating toggles, test.toggleTimings)
-and the pan frame interval (5 x 2 s of overview scrolling, one test.scroll-sized step per
+key-down to a settled presentation, Reduce Motion on, 20 + 100 alternating toggles, test.toggleTimings),
+entering and leaving Full window (Cmd-Return the same way, 10 + 50 per direction), and the pan frame interval (5 x 2 s of overview scrolling, one test.scroll-sized step per
 display-link tick in its own transaction, the interval being the time between the commits of
 consecutive steps from test.frameProbe, at least 500 intervals), and for every leaving toggle the
 capture's duration and whether it finished after the camera or swap began (it must not, and the
@@ -82,6 +82,7 @@ LAUNCHER_RECENTS = 50
 FRONTEND_PAGES = 20
 TOGGLE_SAMPLES = (20, 100)
 TOGGLE_BUDGET_MS = 100
+FULL_WINDOW_SAMPLES = (10, 50)
 PAN_REPEATS = 5
 PAN_SECONDS = 2
 PAN_MIN_INTERVALS = 500
@@ -479,10 +480,25 @@ def toggle_and_pan_bench(fixtures, args, work):
         set_presentation(app, "overview")
         time.sleep(1)
         intervals, ticks, counts, refresh = pan_intervals(app)
+        set_presentation(app, "focused")
+        app.call("test.toggleTimings", {"reset": True})
+        full_warm, full_samples = FULL_WINDOW_SAMPLES
+        for i in range(2 * (full_warm + full_samples)):
+            want = "full-window" if i % 2 == 0 else "focused"
+            app.call("test.key", {"key": "Return", "modifiers": ["cmd"]})
+            bs.wait_until(lambda: len(app.call("test.toggleTimings")["toggle"]) == i + 1,
+                          what=f"full window change {i} to settle")
+            if app.call("test.ui")["presentation"] != want:
+                raise RuntimeError(f"full window change {i} did not reach {want}")
+        both = app.call("test.toggleTimings", {"reset": True})["toggle"]
+        entering, leaving_full = both[0::2][full_warm:], both[1::2][full_warm:]
     finally:
         app.stop()
     toggle_p95 = bs.nearest_rank(toggles, 0.95)
     interval_p95 = bs.nearest_rank(intervals, 0.95)
+    full_window_ok = all(
+        len(values) == full_samples and bs.nearest_rank(values, 0.95) < TOGGLE_BUDGET_MS
+        for values in (entering, leaving_full))
     return {"dataset": {"livePages": FRONTEND_PAGES, "nodes": nodes, "window": "1440x900",
                         "reduceMotion": True, "refreshHz": refresh},
             "toggle": summarize([round(v, 2) for v in toggles]), "toggle_budget_ms": TOGGLE_BUDGET_MS,
@@ -491,7 +507,9 @@ def toggle_and_pan_bench(fixtures, args, work):
             "pan": summarize(intervals), "pan_ticks": summarize(ticks), "pan_counts": counts,
             "pan_repeats": PAN_REPEATS, "pan_seconds": PAN_SECONDS,
             "pan_budget_ms": PAN_BUDGET_MS,
-            "pass": len(toggles) == samples and len(intervals) >= PAN_MIN_INTERVALS
+            "full_window_enter": summarize([round(v, 2) for v in entering]),
+            "full_window_leave": summarize([round(v, 2) for v in leaving_full]),
+            "pass": full_window_ok and len(toggles) == samples and len(intervals) >= PAN_MIN_INTERVALS
             and len(leaving) == len(presentation_starts) and stored and not late_ms and not timeouts
             and counts["commits"] >= counts["steps"] - 2 * PAN_REPEATS
             and counts["notPresented"] <= counts["steps"] // 10
@@ -617,9 +635,9 @@ def print_report(report):
               f"{'PASS' if launcher['pass'] else 'FAIL'}")
     spatial = report.get("overview")
     if spatial:
-        for label in ("toggle", "pan"):
+        for label in ("toggle", "full_window_enter", "full_window_leave", "pan"):
             t = spatial[label]
-            print(f"overview {label}: n {t['n']}, p50 {t['p50']} ms, p95 {t['p95']} ms, "
+            print(f"overview {label.replace('_', ' ')}: n {t['n']}, p50 {t['p50']} ms, p95 {t['p95']} ms, "
                   f"max {t['max']} ms")
         c = spatial["capture"]
         print(f"overview leaving capture: n {c['n']}, p50 {c['p50']} ms, p95 {c['p95']} ms, "
