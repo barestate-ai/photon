@@ -273,18 +273,17 @@ final class CanvasView: NSView, NSTextFieldDelegate {
     flowNewestTrails(camera)
   }
 
-  /// The newest Muse trail of each run that is working drifts, ambient, until the run ends. The
-  /// loop id carries the zoom, which sets the dash period, so a zoom change restarts it once.
+  /// The Muse trail into the page each working run used most recently drifts, ambient, until the
+  /// run ends. The loop id carries the zoom, which sets the dash period, so a zoom change
+  /// restarts it once.
   private func flowNewestTrails(_ camera: Viewport) {
     var wanted: [String: (key: String, run: String)] = [:]
     if !app.motionReduced {
-      var newest: [String: String] = [:]
-      for edge in graph.edges where edge.kind == .museUsed {
-        guard let run = edge.runId else { continue }
-        newest[run] = "\(edge.from)>\(edge.to)>\(edge.kind.rawValue)>\(run)"
-      }
-      for (run, key) in newest where app.runs.run(run)?.state == .running {
-        wanted["trail:\(key)@\(String(format: "%.2f", camera.zoom))"] = (key, run)
+      for run in app.runs.runs where run.state == .running {
+        let pages = run.steps.reversed().filter { $0.state != "failed" }.compactMap(\.tabId)
+        guard let edge = graph.newestTrail(run: run.id, pages: pages) else { continue }
+        let key = "\(edge.from)>\(edge.to)>\(edge.kind.rawValue)>\(run.id)"
+        wanted["trail:\(key)@\(String(format: "%.2f", camera.zoom))"] = (key, run.id)
       }
     }
     // Stop the obsolete loops first: a replacement shares the layer and key, so stopping it

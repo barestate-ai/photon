@@ -201,6 +201,18 @@ public struct PageGraph: Equatable, Sendable {
     return addEdge(PageEdge(from: from, to: to, kind: .museUsed, runId: run))
   }
 
+  /// The run's trail edge into the page it used most recently. `pages` are the run's step tabs,
+  /// newest first; one edge per run and pair means edge order says nothing about recency.
+  public func newestTrail(run: String, pages: some Sequence<String>) -> PageEdge? {
+    for page in pages {
+      guard let to = nodeId(forTab: page) else { continue }
+      if let edge = edges.first(where: { $0.kind == .museUsed && $0.runId == run && $0.to == to }) {
+        return edge
+      }
+    }
+    return nil
+  }
+
   @discardableResult
   private mutating func addEdge(_ edge: PageEdge) -> Bool {
     guard !edges.contains(edge) else { return false }

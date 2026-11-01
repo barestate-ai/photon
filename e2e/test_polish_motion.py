@@ -264,6 +264,40 @@ class TrailFlowTests(PolishCase):
             self.assertEqual(self.phase(), 0, "the static dash comes back")
             self.stop_all()
 
+    def test_the_flow_follows_the_page_in_use_when_a_run_returns_to_an_earlier_one(self):
+        """VAL-POL-004: A->B, A->C, then another call on B adds no edge; the flow moves back to A->B."""
+        owner = self.open_page("launcher.html")
+        b = self.open_page("article.html")
+        c = self.open_page("input.html")
+        self.show("overview")
+        run = self.start("Read the other pages", tab=owner["id"])
+        self.state(run["runId"], "running")
+        for page in (b, c):
+            request = self.call("request_control",
+                                {"sessionId": run["sessionId"], "tabId": page["id"]})
+            if request["state"] != "granted":
+                self.call("control.decide", {"requestId": request["requestId"], "allow": True})
+        self.owner = self.node_of(owner["id"])["id"]
+        node_b, node_c = self.node_of(b["id"])["id"], self.node_of(c["id"])["id"]
+
+        def observe(page):
+            self.call("test.runTool", {"runId": run["runId"], "name": "observe",
+                                       "arguments": {"tabId": page["id"]}})
+
+        def flowing_into():
+            loops = self.flowing()
+            return loops[0]["target"].split(">")[1] if len(loops) == 1 else None
+
+        observe(b)
+        bs.wait_until(lambda: flowing_into() == node_b, what="the flow on A->B")
+        observe(c)
+        bs.wait_until(lambda: flowing_into() == node_c, what="the flow on A->C")
+        observe(b)
+        bs.wait_until(lambda: flowing_into() == node_b, what="the flow back on A->B")
+        self.assertEqual(len(self.trail()), 2, "the repeated use added no edge")
+        save("polish-trail-flow-return.json", self.flowing())
+        self.stop_all()
+
     def stop_all(self):
         for run in self.runs():
             if run["state"] not in ("completed", "stopped", "failed"):

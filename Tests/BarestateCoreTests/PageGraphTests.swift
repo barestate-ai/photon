@@ -136,6 +136,27 @@ struct PageGraphTests {
     #expect(graph.edges.count == 1)
   }
 
+  @Test func theNewestTrailFollowsTheLatestPageUsedNotTheLatestEdgeAdded() throws {
+    var graph = PageGraph()
+    for tab in ["a", "b", "c"] { open(&graph, tab) }
+    _ = graph.museUsed(run: "r1", ownerTab: "a", usedTab: "b")
+    _ = graph.museUsed(run: "r1", ownerTab: "a", usedTab: "c")
+    let (a, b, c) = (
+      try #require(graph.nodeId(forTab: "a")), try #require(graph.nodeId(forTab: "b")),
+      try #require(graph.nodeId(forTab: "c"))
+    )
+    #expect(graph.newestTrail(run: "r1", pages: ["c", "b"])?.to == c)
+    // A third step on b adds no edge (one per run and pair), yet b is now the page in use.
+    #expect(
+      graph.newestTrail(run: "r1", pages: ["b", "c", "b"])
+        == PageEdge(
+          from: a, to: b, kind: .museUsed, runId: "r1"))
+    // The owner's own page and unknown pages have no trail: the latest used page still wins.
+    #expect(graph.newestTrail(run: "r1", pages: ["a", "gone", "c"])?.to == c)
+    #expect(graph.newestTrail(run: "r2", pages: ["b"]) == nil)
+    #expect(graph.newestTrail(run: "r1", pages: []) == nil)
+  }
+
   @Test func museUsedIsRecordedOncePerRunFromOwnerToUsedPage() throws {
     var graph = PageGraph()
     open(&graph, "a")
