@@ -21,9 +21,17 @@ public struct FocusLayout: Equatable, Sendable {
   public let right: [CGRect]
 
   /// `scale` is the text scale: the caption and the command button under the card grow with it.
+  /// `fillInset` makes the page fill the window below that many points (the title bar; 0 in
+  /// native full screen) with no caption and no neighbours around it.
   public static func make(
-    size: CGSize, left wantLeft: Int, right wantRight: Int, scale: Double = 1
+    size: CGSize, left wantLeft: Int, right wantRight: Int, scale: Double = 1,
+    fillInset: Double? = nil
   ) -> FocusLayout {
+    if let fillInset {
+      let card = CGRect(
+        x: 0, y: fillInset, width: size.width, height: max(0, size.height - fillInset))
+      return FocusLayout(card: card, caption: .zero, columns: false, left: [], right: [])
+    }
     let wide = size.width >= collapseWidth
     let columns = wide && wantLeft + wantRight > 0
     let captionHeight = captionHeight * scale

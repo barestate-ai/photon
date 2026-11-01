@@ -63,6 +63,27 @@ import Testing
     }
   }
 
+  @Test func fullWindowFillsTheWindowBelowTheTitleBarWithNothingAroundIt() {
+    for size in [desktop, CGSize(width: 720, height: 600), CGSize(width: 2560, height: 1440)] {
+      let layout = FocusLayout.make(size: size, left: 3, right: 3, fillInset: 28)
+      #expect(layout.card == CGRect(x: 0, y: 28, width: size.width, height: size.height - 28))
+      #expect(!layout.columns)
+      #expect(layout.left.isEmpty && layout.right.isEmpty)
+      #expect(layout.caption == .zero)
+    }
+  }
+
+  @Test func nativeFullScreenHasNoTitleBarInset() {
+    let layout = FocusLayout.make(size: desktop, left: 0, right: 0, fillInset: 0)
+    #expect(layout.card == CGRect(origin: .zero, size: desktop))
+  }
+
+  @Test func withoutAFillInsetTheFocusedLayoutIsUnchanged() {
+    #expect(
+      FocusLayout.make(size: desktop, left: 2, right: 2)
+        == FocusLayout.make(size: desktop, left: 2, right: 2, fillInset: nil))
+  }
+
   @Test func theContextOfAPageIsItsEdgeNeighboursSplitByWhichSideTheyLieOn() {
     var graph = PageGraph()
     graph.observe(tab: "a", url: "https://a.test/", title: "A", origin: .none, now: 1)

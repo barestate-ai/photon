@@ -12,6 +12,8 @@ public struct DataDir: Equatable, Sendable {
   public var logs: String { root + "/logs" }
   public var spend: String { root + "/spend.json" }
   public var pairing: String { root + "/pairing.json" }
+  /// Exists once the empty canvas has shown its first-run hint, so it is shown only once.
+  public var hintSeen: String { root + "/first-run-hint" }
   /// The Barestate Muse device token under --test-hooks (normal use: the Keychain, D74).
   public var deviceToken: String { root + "/device-token" }
 }
