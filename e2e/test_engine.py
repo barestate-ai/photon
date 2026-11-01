@@ -118,7 +118,8 @@ class QuitTests(unittest.TestCase):
             bs.wait_until(lambda: not any(self.alive(pid) for pid in pids),
                           10, what="all processes gone")
             self.assertEqual(sorted(os.listdir(app.data_dir)),
-                             ["barestate.sqlite", "logs", "profile", "settings.json", "tmp"])
+                             ["barestate.sqlite", "first-run-hint", "logs", "profile", "settings.json",
+                              "tmp"])
         finally:
             app.stop()
             self.assertTrue(fixtures.healthy())

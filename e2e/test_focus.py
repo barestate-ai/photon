@@ -29,9 +29,11 @@ class FocusCase(GraphCase):
             self.wait_presentation("overview")
 
     def show_page(self):
-        if self.presentation() != "focused":
+        if self.presentation() == "full-window":
+            self.key("Return", "cmd")
+        elif self.presentation() != "focused":
             self.key("\\", "cmd", "shift")
-            self.wait_presentation("focused")
+        self.wait_presentation("focused")
 
     def pages(self, count):
         """Live pages with a node each; the blank tab the app starts with has none, so it goes."""

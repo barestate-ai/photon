@@ -12,6 +12,8 @@
     window.__nonce = Math.random().toString(36).slice(2);
     window.__keys = 0;
     window.__pointer = 0;
+    window.__escapes = 0;
+    addEventListener("keydown", (event) => { if (event.key === "Escape") window.__escapes += 1; }, true);
     for (const type of ["keydown", "keyup", "keypress", "input"]) {
       addEventListener(type, () => { window.__keys += 1; }, true);
     }

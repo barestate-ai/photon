@@ -107,8 +107,8 @@ class PagesCase(FocusCase):
 
     def assert_focused_on(self, index, before_world, before_docs, step):
         tab = self.pages_[index]
-        bs.wait_until(lambda: self.active_id() == tab and self.presentation() == "focused",
-                      what=f"{step}: {TITLES[index]} focused")
+        bs.wait_until(lambda: self.active_id() == tab and self.presentation() == "full-window",
+                      what=f"{step}: {TITLES[index]} in Full window")
         caption = self.ui()["caption"]
         self.assertEqual((caption["title"], caption["host"]),
                          (TITLES[index], urlsplit(self.urls[index]).netloc), step)
@@ -176,8 +176,8 @@ class ListAndFilterTests(PagesCase):
             row = next(r for r in self.enter_pages("click")["rows"] if r["target"] == tab)
             self.click_row(row["id"])
             self.wait_closed()
-            bs.wait_until(lambda: self.active_id() == tab and self.presentation() == "focused",
-                          what=f"{TITLES[index]} focused")
+            bs.wait_until(lambda: self.active_id() == tab and self.presentation() == "full-window",
+                          what=f"{TITLES[index]} in Full window")
 
 
 class ChooseTests(PagesCase):
