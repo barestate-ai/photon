@@ -11,6 +11,19 @@ final class ContentContainerView: NSView {
   }
 }
 
+/// The identity row, the focused page's context and its caption: everything that gives way when a
+/// page fills the window, so it fades and hides as one. It answers hits only through its parts.
+final class PageChromeView: NSView {
+  var passesHits = true
+  override var isFlipped: Bool { true }
+
+  override func hitTest(_ point: NSPoint) -> NSView? {
+    guard passesHits, !isHidden else { return nil }
+    let local = convert(point, from: superview)
+    return subviews.reversed().lazy.compactMap { $0.hitTest(local) }.first
+  }
+}
+
 /// The window's content: the canvas, the tab views over it, the command button, the page
 /// caption, the find bar and the launcher. Nothing else draws in the window; the traffic lights
 /// sit over the canvas.
@@ -36,12 +49,54 @@ final class WindowRootView: NSView {
   private var noticeTimer: Task<Void, Never>?
   /// Hidden in the model, still fading out on screen.
   private var noticeLeaving = false
-  private let mark = NSImageView()
-  private let wordmark = NSTextField(labelWithString: "Photon")
+  let mark = NSImageView()
+  let wordmark = NSTextField(labelWithString: "Photon")
   private let compactChip = FlippedView()
   private let compactKey = NSTextField(labelWithString: "⌘T")
+  /// The one line on a first, empty canvas; hidden for good once a page exists.
+  let hint = NSTextField(labelWithString: "")
+  /// Appears at the top right while the pointer is there in Full window.
+  let exitControl = ChromeButton(
+    symbol: "arrow.down.right.and.arrow.up.left", label: "Exit Full Window", side: 28, glyph: 14)
+  let chrome = PageChromeView()
+  /// The focused page fills the window below the title bar; set by the app, never by a layout. The
+  /// chrome's model is final at once, and a move fades what is on screen toward it.
+  var fillsWindow = false {
+    didSet {
+      guard fillsWindow != oldValue else { return }
+      CATransaction.begin()
+      CATransaction.setDisableActions(true)
+      chrome.layer?.opacity = fillsWindow ? 0 : 1
+      CATransaction.commit()
+      chrome.passesHits = !fillsWindow
+      if !fillsWindow { chrome.isHidden = false }
+      showExitControl(false)
+      layoutChildren()
+    }
+  }
+  /// A click on bare window beside the focused page.
+  var onEmptyClick: (() -> Void)?
+  var onExitFullWindow: (() -> Void)?
 
   override var isFlipped: Bool { true }
+
+  /// Ivory over the live pages while a page changes size under a move, so no half-laid-out page
+  /// shows.
+  let backdrop = FlightView()
+
+  /// Once nothing fades any more, the chrome is out of the window for good while a page fills it.
+  func settleFillChrome() { chrome.isHidden = fillsWindow }
+
+  /// What the chrome shows now, a fade in progress included.
+  var chromeOpacity: Float {
+    chrome.layer.flatMap { (Motion.current($0, "opacity") as? NSNumber)?.floatValue } ?? 1
+  }
+
+  /// Native full screen has no title bar; otherwise a page filling the window starts below it.
+  var titleBarInset: Double {
+    guard let window, !window.styleMask.contains(.fullScreen) else { return 0 }
+    return max(0, window.frame.height - window.contentLayoutRect.height)
+  }
 
   override init(frame: NSRect) {
     super.init(frame: frame)
@@ -62,6 +117,15 @@ final class WindowRootView: NSView {
     notice.wantsLayer = true
     notice.layer?.opacity = 0
     notice.setAccessibilityElement(false)
+    hint.textColor = Design.muted
+    hint.alignment = .center
+    hint.lineBreakMode = .byWordWrapping
+    hint.maximumNumberOfLines = 2
+    hint.isHidden = true
+    hint.wantsLayer = true
+    exitControl.isHidden = true
+    exitControl.wantsLayer = true
+    exitControl.toolTip = "Exit Full Window"
     compactKey.textColor = Design.muted
     compactChip.addSubview(compactKey)
     applyTextScale()
@@ -69,8 +133,14 @@ final class WindowRootView: NSView {
       view.setAccessibilityElement(false)
       view.wantsLayer = true
     }
+    chrome.wantsLayer = true
+    chrome.setAccessibilityElement(false)
+    backdrop.layer?.backgroundColor = Design.canvas.cgColor
+    backdrop.isHidden = true
+    for view in [mark, wordmark, caption] as [NSView] { chrome.addSubview(view) }
+    exitControl.onClick = { [weak self] in self?.onExitFullWindow?() }
     for view in [
-      mark, wordmark, container, caption, notice, commandButton, compactChip, findBar,
+      container, backdrop, chrome, notice, hint, commandButton, compactChip, findBar, exitControl,
       approvalCard, phoneChip, activity, launcher, orb,
     ]
       as [NSView]
@@ -103,6 +173,7 @@ final class WindowRootView: NSView {
   func applyTextScale() {
     wordmark.font = Fonts.ui(18, weight: 500)
     notice.font = Fonts.ui(13)
+    hint.font = Fonts.ui(14)
     compactKey.font = Fonts.hint(14)
     compactKey.sizeToFit()
     commandButton.applyTextScale()
@@ -143,6 +214,61 @@ final class WindowRootView: NSView {
 
   override func mouseDown(with event: NSEvent) {
     window?.makeFirstResponder(self)
+    let onCaption =
+      !caption.isHidden && caption.frame.contains(convert(event.locationInWindow, from: nil))
+    if !fillsWindow, !onCaption { onEmptyClick?() }
+  }
+
+  // MARK: Pointer
+
+  /// Where the pointer reveals the exit control while a page fills the window.
+  var exitZone: NSRect {
+    NSRect(x: bounds.width - 160, y: 0, width: 160, height: titleBarInset + 72)
+  }
+
+  /// The pointer moved inside the window, really or by a hook. What appears on hover is decided
+  /// here, whichever view the pointer is over.
+  func pointerMoved(to point: NSPoint) {
+    showExitControl(fillsWindow && exitZone.contains(point))
+    caption.setControlShown(!fillsWindow && caption.frame.contains(point))
+    canvasView?.pointerMoved(to: point)
+  }
+
+  private func showExitControl(_ shown: Bool) {
+    guard exitControl.isHidden == shown else { return }
+    exitControl.isHidden = !shown
+    guard shown, let layer = exitControl.layer else { return }
+    layer.opacity = 1
+    guard cameraIdle else { return }
+    MotionLedger.shared.start(
+      .buttonFade, target: "exitControl",
+      [
+        .init(
+          layer: layer, key: "reveal.fade",
+          animation: Motion.ease(
+            "opacity", from: 0, to: 1,
+            duration: MotionLedger.shared.reduced() ? Motion.reducedFade : Motion.fadeSmall))
+      ])
+  }
+
+  // MARK: First-run hint
+
+  func setHint(_ text: String?) {
+    hint.stringValue = text ?? ""
+    hint.isHidden = text == nil
+    layoutHint()
+  }
+
+  /// Centred on the empty canvas, clear of the title above and of the legend and button below.
+  private func layoutHint() {
+    guard !hint.isHidden else { return }
+    let width = min(bounds.width - 96, 640 * Fonts.scale)
+    let size =
+      hint.cell?.cellSize(forBounds: NSRect(x: 0, y: 0, width: width, height: 1000))
+      ?? .zero
+    hint.frame = NSRect(
+      x: ((bounds.width - width) / 2).rounded(), y: (bounds.height / 2 - size.height / 2).rounded(),
+      width: width, height: size.height.rounded(.up))
   }
 
   override func keyDown(with event: NSEvent) {
@@ -160,11 +286,8 @@ final class WindowRootView: NSView {
     focusContext = focus
     canvas.layer?.backgroundColor = Design.canvas.cgColor
     addSubview(canvas, positioned: .above, relativeTo: container)
-    addSubview(focus, positioned: .above, relativeTo: canvas)
-    addSubview(flightView, positioned: .above, relativeTo: focus)
-    for view in [mark, wordmark] as [NSView] {
-      addSubview(view, positioned: .above, relativeTo: canvas)
-    }
+    chrome.addSubview(focus, positioned: .below, relativeTo: mark)
+    addSubview(flightView, positioned: .above, relativeTo: chrome)
     linkKeyLoop()
     layoutChildren()
   }
@@ -370,18 +493,26 @@ final class WindowRootView: NSView {
     } else {
       return false
     }
-    let width = min(
-      bounds.width - 16, anchor.focused ? target.width : max(target.width, 320 * scale))
-    let room =
-      anchor.focused
-      ? bounds.height - 12 - target.maxY
-      : max(
+    // A page that fills the window leaves nothing below it: the card rises over its bottom edge.
+    let covering = anchor.focused && fillsWindow
+    let wanted: CGFloat
+    let room: CGFloat
+    if covering {
+      (wanted, room) = (min(target.width, 632 * scale), target.height - 16)
+    } else if anchor.focused {
+      (wanted, room) = (target.width, bounds.height - 12 - target.maxY)
+    } else {
+      wanted = max(target.width, 320 * scale)
+      room = max(
         80 * scale,
         (compactButton ? compactChip.frame.minY : commandButton.frame.minY) - 16
           - target.minY - PageGraph.nodeHeight * CGFloat(canvasView?.zoomLevel ?? 1))
+    }
+    let width = min(bounds.width - 16, wanted)
     let height = approvalCard.fit(width: width, maxHeight: room)
     let x = min(
-      max(8, anchor.focused ? target.minX : target.midX - width / 2), bounds.width - 8 - width)
+      max(8, anchor.focused && !covering ? target.minX : target.midX - width / 2),
+      bounds.width - 8 - width)
     // On the canvas the card gives way to the command button; beside a live page it stays off the
     // page and the button hides while the card covers it (⌘T still opens the launcher).
     let floor = (compactButton ? compactChip.frame.minY : commandButton.frame.minY) - 8
@@ -410,12 +541,14 @@ final class WindowRootView: NSView {
     wordmark.sizeToFit()
     wordmark.frame.origin = NSPoint(x: 80, y: 41)
     canvasView?.frame = bounds
+    chrome.frame = bounds
+    backdrop.frame = bounds
     focusContext?.frame = bounds
     flightView.frame = bounds
     container.frame = bounds
     focusLayout = FocusLayout.make(
       size: bounds.size, left: context.left.count, right: context.right.count,
-      scale: Fonts.scale)
+      scale: Fonts.scale, fillInset: fillsWindow ? titleBarInset : nil)
     notice.frame = NSRect(
       x: ((bounds.width - notice.frame.width) / 2).rounded(), y: 44, width: notice.frame.width,
       height: notice.frame.height)
@@ -426,7 +559,11 @@ final class WindowRootView: NSView {
       if MotionLedger.shared.running(.camera) { MotionLedger.shared.noteLiveViewResize() }
       view.frame = page
     }
-    caption.frame = focusLayout.caption
+    // The caption stays where it was while it fades out with the rest of the chrome.
+    if !fillsWindow { caption.frame = focusLayout.caption }
+    exitControl.frame.origin = NSPoint(
+      x: bounds.width - 12 - exitControl.frame.width, y: page.minY + 8)
+    layoutHint()
     commandButton.frame.origin = NSPoint(
       x: ((bounds.width - CommandButton.width) / 2).rounded(),
       y: bounds.height - 16 - CommandButton.height)
@@ -441,8 +578,10 @@ final class WindowRootView: NSView {
       x: anchor.minX - 8 - ThinkingOrbView.size, y: anchor.midY - ThinkingOrbView.size / 2,
       width: ThinkingOrbView.size, height: ThinkingOrbView.size)
     findBar.fit(width: min(FindBarView.width, max(0, page.width - 16)))
+    // Below the exit control, which sits in the same corner of a page that fills the window.
     findBar.frame.origin = NSPoint(
-      x: max(page.minX + 8, page.maxX - 8 - findBar.frame.width), y: page.minY + 8)
+      x: max(page.minX + 8, page.maxX - 8 - findBar.frame.width),
+      y: page.minY + (fillsWindow ? 44 : 8))
     focusContext?.refresh()
     placeApproval()
     phoneChip.frame.origin = NSPoint(

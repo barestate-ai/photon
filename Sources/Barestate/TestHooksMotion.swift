@@ -11,7 +11,7 @@ extension AppController {
     let moving = camera.isMoving
     let button = root?.commandButton.layer
     fields["camera"] = [
-      "presentation": .string(presentation.rawValue),
+      "presentation": .string(viewLevel.rawValue),
       "phase": .string(moving ? "moving" : (camera.layerKind != nil ? "landing" : "idle")),
       "layer": camera.layerKind.map { .string($0) } ?? .null,
       "generation": .number(Double(camera.generation)),

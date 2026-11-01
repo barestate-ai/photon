@@ -47,7 +47,7 @@ final class CanvasView: NSView, NSTextFieldDelegate {
   /// including those made while a page was in front. What the first draw finds (a restored
   /// session) is simply there.
   private var hasDrawn = false
-  private var hovered: String?
+  private(set) var hovered: String?
   /// A pinch past the zoom limits: the unclamped zoom, and where the pinch is anchored.
   private var overshoot: (raw: Double, anchor: CGPoint)?
   /// Until the person moves the camera, it keeps every page in view and centred. Nil until the
@@ -408,10 +408,35 @@ final class CanvasView: NSView, NSTextFieldDelegate {
   }
 
   override func mouseMoved(with event: NSEvent) {
-    hover(drag == nil && !gesturing ? nodeId(at: convert(event.locationInWindow, from: nil)) : nil)
+    pointerMoved(to: convert(event.locationInWindow, from: nil))
   }
 
   override func mouseExited(with event: NSEvent) { hover(nil) }
+
+  /// The pointer, really or by a hook, is at `point`: the card under it is hovered, and the cursor
+  /// says what a press does there. A card opens on a click (pointing hand); the empty canvas pans
+  /// (open hand).
+  func pointerMoved(to point: CGPoint) {
+    guard !isHidden else {
+      cursor = .arrow
+      return hover(nil)
+    }
+    let id = drag == nil && !gesturing ? nodeId(at: point) : nil
+    hover(id)
+    cursor = id == nil ? .openHand : .pointingHand
+    cursor.set()
+  }
+
+  /// What the pointer last showed over the overview.
+  private(set) var cursor = NSCursor.arrow
+
+  var cursorName: String {
+    switch cursor {
+    case .pointingHand: "pointing-hand"
+    case .openHand: "open-hand"
+    default: "arrow"
+    }
+  }
 
   private func hover(_ id: String?) {
     guard id != hovered else { return }
@@ -629,6 +654,7 @@ final class CanvasView: NSView, NSTextFieldDelegate {
     if held.moved {
       releaseGesture()
     } else {
+      app.cardClick = (held.id, event.locationInWindow)
       app.focusNode(held.id)
     }
   }
@@ -702,9 +728,36 @@ final class CanvasView: NSView, NSTextFieldDelegate {
         element.setAccessibilityFrame(window.convertToScreen(convert(local, to: nil)))
       }
       elements.append(element)
+      if node.id == hovered { elements.append(openChipElement(for: node, in: local)) }
     }
     nodeElements = nodeElements.filter { live.contains($0.key) }
     return elements
+  }
+
+  /// The "Open" chip that shows on the hovered card, as a button of its own.
+  private let chipElement = NodeAccessibilityElement()
+
+  private func openChipElement(for node: PageNode, in card: CGRect) -> NodeAccessibilityElement {
+    chipElement.setAccessibilityRole(.button)
+    chipElement.setAccessibilityEnabled(true)
+    chipElement.setAccessibilityParent(self)
+    chipElement.setAccessibilityLabel("Open")
+    chipElement.setAccessibilityHelp(node.title)
+    chipElement.onPress = { [weak self] in self?.app.focusNode(node.id) }
+    if let window {
+      chipElement.setAccessibilityFrame(
+        window.convertToScreen(convert(Self.chipRect(in: card), to: nil)))
+    }
+    return chipElement
+  }
+
+  /// The chip of a card drawn at `card`, scaled with it.
+  static func chipRect(in card: CGRect) -> CGRect {
+    let scale = card.width / PageGraph.nodeWidth
+    let chip = NodeCard.chipFrame
+    return CGRect(
+      x: card.minX + chip.minX * scale, y: card.minY + chip.minY * scale,
+      width: chip.width * scale, height: chip.height * scale)
   }
 
   private func museStatus(of node: PageNode) -> String? {

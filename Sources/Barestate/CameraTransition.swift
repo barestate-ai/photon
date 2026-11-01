@@ -32,6 +32,9 @@ final class CameraTransition {
   private(set) var layerKind: String?
   /// From the start of a move into a page until it lands: the live view stays hidden.
   private(set) var defersFocus = false
+  /// From the start of a move to Full window or back until it ends: the page is on screen, but the
+  /// keyboard goes to it only when the move lands.
+  private var filling = false
   /// While a move's `commit` runs: the layout it causes belongs to the move being set up.
   private var committing = false
 
@@ -66,6 +69,7 @@ final class CameraTransition {
       return commit()
     }
     let start = flightRect ?? root.canvasView?.overviewCardRect(of: node)
+    let chromeFrom = root.chromeOpacity
     generation += 1
     defersFocus = true
     run(commit)
@@ -74,18 +78,83 @@ final class CameraTransition {
       return app.applyPresentation()
     }
     root.container.show(nil)
-    fly(node: node, from: start, to: root.pageRect, toPage: true)
+    fly(node: node, from: start, to: root.pageRect, toPage: true, chromeFrom: chromeFrom)
   }
 
   /// The page to the overview. `commit` switches the presentation, which hides the live view.
   func toOverview(of node: String?, commit: () -> Void) {
     guard let root = app.root, let node else { return commit() }
     let start = flightRect ?? root.pageRect
+    let chromeFrom = root.chromeOpacity
     generation += 1
     defersFocus = false
     run(commit)
     guard let destination = root.canvasView?.overviewCardRect(of: node) else { return cancel() }
-    fly(node: node, from: start, to: destination, toPage: false)
+    fly(node: node, from: start, to: destination, toPage: false, chromeFrom: chromeFrom)
+  }
+
+  /// The focused page to Full window and back. The live view takes its final frame at once under
+  /// an ivory backdrop, the page's last look flies between the two frames above it, and both fade
+  /// off together at the end: the page is revealed inside this one move, never by a second.
+  func toFill(_ fill: Bool) {
+    guard let root = app.root, let node = app.activeNodeId, let backdrop = root.backdrop.layer,
+      let chrome = root.chrome.layer
+    else { return }
+    let start = flightRect ?? root.pageRect
+    let chromeFrom = (Motion.current(chrome, "opacity") as? NSNumber)?.floatValue ?? 1
+    generation += 1
+    defersFocus = false
+    filling = true
+    ledger.cancel(.camera)
+    run { app.fillsWindow = fill }
+    let page = root.pageRect
+    prepare(node: node, page: page)
+
+    let spring = Motion.spring(
+      .camera, keyPath: "transform",
+      from: NSValue(caTransform3D: Self.transform(page, to: start)),
+      to: NSValue(caTransform3D: CATransform3DIdentity))
+    let (begin, end) = (fill ? Self.radius(start, page: page) : 0, fill ? 0 : Design.radiusControl)
+    CATransaction.begin()
+    CATransaction.setDisableActions(true)
+    layer.transform = CATransform3DIdentity
+    layer.cornerRadius = end
+    layer.opacity = 0
+    root.backdrop.isHidden = false
+    backdrop.opacity = 0
+    CATransaction.commit()
+
+    // Held at full opacity until the move is nearly over, then gone by its end.
+    func tail(_ from: Float) -> CAKeyframeAnimation {
+      let cover = Motion.previewSwapCover / spring.duration
+      let fade = CAKeyframeAnimation(keyPath: "opacity")
+      fade.values = [from, from, 0]
+      fade.keyTimes = [0, NSNumber(value: max(0, 1 - cover)), 1]
+      fade.timingFunctions = [Motion.easeOut, Motion.easeOut]
+      fade.duration = spring.duration
+      return fade
+    }
+    let chromeFade = Motion.ease(
+      "opacity", from: chromeFrom, to: chrome.opacity,
+      duration: fill ? Motion.cameraFade : Motion.columnsFade)
+    let generation = generation
+    ledger.start(
+      .camera, target: node, generation: generation,
+      [
+        .init(layer: layer, key: "camera", animation: spring),
+        .init(
+          layer: layer, key: "camera.radius",
+          animation: Motion.spring(.camera, keyPath: "cornerRadius", from: begin, to: end)),
+        .init(layer: layer, key: "camera.cover", animation: tail(1)),
+        .init(layer: backdrop, key: "camera.backdrop", animation: tail(1)),
+        .init(layer: chrome, key: "fill.fade", animation: chromeFade),
+      ]
+    ) { [weak self] finished in
+      guard let self, finished, generation == self.generation else { return }
+      clear()
+      app.applyPresentation(settling: true)
+    }
+    CATransaction.flush()
   }
 
   private func run(_ commit: () -> Void) {
@@ -113,12 +182,12 @@ final class CameraTransition {
   /// the move was heading into a page: the caller lands it once the new frame is in place.
   func settle() -> Bool {
     guard !committing, isMoving || defersFocus || layerKind != nil else { return false }
-    let landing = defersFocus
+    let landing = defersFocus || filling
     cancel()
     return landing
   }
 
-  private func fly(node: String, from: CGRect?, to: CGRect, toPage: Bool) {
+  private func fly(node: String, from: CGRect?, to: CGRect, toPage: Bool, chromeFrom: Float) {
     guard let root = app.root else { return }
     let page = root.pageRect
     let generation = generation
@@ -167,6 +236,16 @@ final class CameraTransition {
           delay: Motion.overviewFadeDelay)
       parts.append(.init(layer: canvas, key: "camera.fade", animation: fade))
     }
+    // The identity row goes with the overview into a page that fills the window, and comes back
+    // with it.
+    if let chrome = root.chrome.layer, chrome.opacity != chromeFrom {
+      parts.append(
+        .init(
+          layer: chrome, key: "fill.fade",
+          animation: Motion.ease(
+            "opacity", from: chromeFrom, to: chrome.opacity,
+            duration: toPage ? Motion.cameraFade : Motion.overviewFade)))
+    }
     ledger.start(.camera, target: node, generation: generation, parts) { [weak self] finished in
       guard let self, finished, generation == self.generation else { return }
       if toPage { self.land() } else { self.clear() }
@@ -185,6 +264,7 @@ final class CameraTransition {
     root.canvasView?.layer?.opacity = 1
     CATransaction.commit()
     cover()
+    guard !app.fillsWindow else { return }
     let duration = app.motionReduced ? Motion.reducedToggleFade : Motion.columnsFade
     for fade in chromeLayers {
       fade.opacity = 1
@@ -225,6 +305,9 @@ final class CameraTransition {
   private func clear() {
     layer.removeFromSuperlayer()
     layerKind = nil
+    filling = false
+    app.root?.backdrop.isHidden = true
+    app.root?.settleFillChrome()
   }
 
   // MARK: The flying layer

@@ -23,10 +23,14 @@ final class NodeCard {
   }
 
   static let captionTop = PageNode.cardHeight + 4
+  /// The "Open" chip a hovered card shows at its top right, in card points.
+  static let chipFrame = CGRect(x: PageGraph.nodeWidth - 8 - 48, y: 8, width: 48, height: 22)
 
   let id: String
   let layer = CALayer()
   private var hovering = false
+  private let openChip = CALayer()
+  private let openText = CATextLayer()
   private let card = CALayer()
   var cardLayer: CALayer { card }
   private let image = CALayer()
@@ -93,7 +97,18 @@ final class NodeCard {
     for sublayer in [card, ring, title, subtitle, dot, currentLabel, museDot, museLabel] {
       layer.addSublayer(sublayer)
     }
-    for sublayer in [image, placeholderTitle, placeholderOrigin, staleNote] {
+    openChip.frame = Self.chipFrame
+    openChip.backgroundColor = Design.surface.cgColor
+    openChip.borderColor = Design.line.cgColor
+    openChip.borderWidth = 1
+    openChip.cornerRadius = Self.chipFrame.height / 2
+    openChip.opacity = 0
+    openText.frame = CGRect(x: 0, y: 3, width: Self.chipFrame.width, height: 16)
+    openText.alignmentMode = .center
+    openText.string = Self.attributed(
+      "Open", Fonts.manrope(12, weight: 500), Design.petrol, align: .center)
+    openChip.addSublayer(openText)
+    for sublayer in [image, placeholderTitle, placeholderOrigin, staleNote, openChip] {
       card.addSublayer(sublayer)
     }
     currentLabel.string = Self.attributed(
@@ -121,6 +136,7 @@ final class NodeCard {
     if next.scale != look.scale {
       for text in [
         placeholderTitle, placeholderOrigin, staleNote, title, subtitle, currentLabel, museLabel,
+        openText,
       ] {
         text.contentsScale = next.scale
       }
@@ -191,6 +207,7 @@ final class NodeCard {
   func setHover(_ on: Bool) {
     guard hovering != on else { return }
     hovering = on
+    fadeChip(to: on ? 1 : 0)
     guard !look.current else { return }
     let from = (card.presentation() ?? card).borderColor
     card.borderColor = borderColor(current: false)
@@ -201,6 +218,20 @@ final class NodeCard {
           layer: card, key: "hover",
           animation: Motion.ease(
             "borderColor", from: from, to: card.borderColor, duration: Motion.hoverBorder))
+      ])
+  }
+
+  private func fadeChip(to target: Float) {
+    let from = (Motion.current(openChip, "opacity") as? NSNumber)?.floatValue ?? 0
+    openChip.opacity = target
+    MotionLedger.shared.start(
+      .buttonHover, target: id,
+      [
+        .init(
+          layer: openChip, key: "chip",
+          animation: Motion.ease(
+            "opacity", from: from, to: target,
+            duration: MotionLedger.shared.reduced() ? Motion.reducedFade : Motion.hover))
       ])
   }
 

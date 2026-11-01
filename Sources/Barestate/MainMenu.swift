@@ -67,10 +67,15 @@ func makeMainMenu(controller: AppController) -> NSMenu {
     add("Reload Page", menu, #selector(AppController.reloadPage), "r")
     menu.addItem(.separator())
     add("Show Page", menu, #selector(AppController.toggleOverview), "\\", [.command, .shift])
+    add("Open Full Window", menu, #selector(AppController.toggleFullWindow), "\r")
     menu.addItem(.separator())
     add("Zoom In", menu, #selector(AppController.zoomInOverview), "=")
     add("Zoom Out", menu, #selector(AppController.zoomOutOverview), "-")
     add("Zoom to Fit", menu, #selector(AppController.zoomToFitOverview), "0")
+    menu.addItem(.separator())
+    add(
+      "Enter Full Screen", menu, #selector(AppController.toggleNativeFullScreen), "f",
+      [.command, .control])
   }
   submenu("Muse") { menu in
     add("Show Muse Activity", menu, #selector(AppController.showMuseActivity), "", [])

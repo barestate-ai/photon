@@ -67,7 +67,8 @@ func registerTestHooks(
       "commandButton": controller.commandButtonState(),
       "orb": controller.orbState(),
       "caption": controller.captionState(),
-      "presentation": .string(controller.presentation.rawValue),
+      "presentation": .string(controller.viewLevel.rawValue),
+      "fullWindow": controller.fullWindowState(),
       "cefBrowserCount": .number(Double(controller.cefBrowserCount)),
       "canvas": controller.canvasState(),
       "overview": controller.overviewState(),
@@ -289,11 +290,36 @@ func registerTestHooks(
     let hit = win.contentView?.superview?.hitTest(point)
     let posted = await post(
       SyntheticInput.clickEvents(
-        at: point, windowNumber: win.windowNumber, modifiers: try modifiers(params)))
+        at: point, windowNumber: win.windowNumber, modifiers: try modifiers(params),
+        count: params["count"]?.int ?? 1))
     return [
       "posted": posted["posted"] ?? .null,
       "hit": .string(hit.map { String(describing: type(of: $0)) } ?? "none"),
     ]
+  }
+
+  // The pointer arrives at a point of the window (x and y from its top left, as `test.ui` frames
+  // are), or at a view's own point when a target is named.
+  dispatcher.register("test.move") { params in
+    let win = try window()
+    var point: NSPoint
+    if let id = params["target"]?.string {
+      guard let view = controller.hookView(id), !view.isHiddenOrHasHiddenAncestor else {
+        throw RPCError.invalidParams("target (a visible view id) not found")
+      }
+      let y = params["y"]?.number ?? view.bounds.height / 2
+      point = view.convert(
+        NSPoint(
+          x: params["x"]?.number ?? view.bounds.width / 2,
+          y: view.isFlipped ? y : view.bounds.height - y), to: nil)
+    } else {
+      guard let x = params["x"]?.number, let y = params["y"]?.number else {
+        throw RPCError.invalidParams("target, or x and y (window points from the top left)")
+      }
+      point = NSPoint(x: x, y: win.frame.height - y)
+    }
+    win.makeKey()
+    return await post(SyntheticInput.moveEvent(to: point, windowNumber: win.windowNumber))
   }
 
   var lastDrag = NSPoint.zero

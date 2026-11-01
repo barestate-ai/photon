@@ -94,19 +94,28 @@ enum SyntheticInput {
     }
   }
 
-  /// `point` is in window coordinates (origin bottom-left).
+  /// `point` is in window coordinates (origin bottom-left). `count` presses in a row, the nth
+  /// carrying click count n, as a double-click does.
   static func clickEvents(
-    at point: NSPoint, windowNumber: Int, modifiers: NSEvent.ModifierFlags = []
+    at point: NSPoint, windowNumber: Int, modifiers: NSEvent.ModifierFlags = [], count: Int = 1
   ) -> [NSEvent] {
-    let steps: [(NSEvent.EventType, Float)] = [
-      (.mouseMoved, 0), (.leftMouseDown, 1), (.leftMouseUp, 0),
-    ]
-    return steps.compactMap { type, pressure in
+    var steps: [(NSEvent.EventType, Float, Int)] = [(.mouseMoved, 0, 0)]
+    for press in 1...max(1, count) {
+      steps += [(.leftMouseDown, 1, press), (.leftMouseUp, 0, press)]
+    }
+    return steps.compactMap { type, pressure, clicks in
       NSEvent.mouseEvent(
         with: type, location: point, modifierFlags: modifiers, timestamp: nextStamp(),
-        windowNumber: windowNumber, context: nil, eventNumber: 0,
-        clickCount: type == .mouseMoved ? 0 : 1, pressure: pressure)
+        windowNumber: windowNumber, context: nil, eventNumber: 0, clickCount: clicks,
+        pressure: pressure)
     }
+  }
+
+  static func moveEvent(to point: NSPoint, windowNumber: Int) -> [NSEvent] {
+    NSEvent.mouseEvent(
+      with: .mouseMoved, location: point, modifierFlags: [], timestamp: nextStamp(),
+      windowNumber: windowNumber, context: nil, eventNumber: 0, clickCount: 0, pressure: 0
+    ).map { [$0] } ?? []
   }
 
   /// Press at `start`, drag to `end` in `steps` moves, and release there unless `release` is

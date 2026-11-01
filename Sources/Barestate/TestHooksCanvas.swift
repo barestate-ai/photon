@@ -131,8 +131,9 @@ extension AppController {
         })
     }
     func frame(_ rect: CGRect?) -> JSON { rect.map(json) ?? .null }
+    let filling = root.fillsWindow
     return [
-      "visible": .bool(!view.isHidden),
+      "visible": .bool(!view.isHiddenOrHasHiddenAncestor),
       "size": ["w": .number(root.bounds.width), "h": .number(root.bounds.height)],
       "columns": .bool(layout.columns), "card": json(layout.card),
       "liveFrame": activeTab.map { windowRect($0.view) } ?? .null,
@@ -155,9 +156,10 @@ extension AppController {
             "start": point(route.start), "control": point(route.control), "end": point(route.end),
           ]
         }),
-      "left": column(root.context.left),
-      "right": column(root.context.right),
-      "neighbours": .array((root.context.left + root.context.right).map { .string($0.id) }),
+      "left": column(filling ? [] : root.context.left),
+      "right": column(filling ? [] : root.context.right),
+      "neighbours": .array(
+        filling ? [] : (root.context.left + root.context.right).map { .string($0.id) }),
     ]
   }
 }
@@ -255,13 +257,14 @@ func registerPointerHooks(_ dispatcher: RPCDispatcher, controller: AppController
   }
 
   // `by` is NSEvent.magnification: 0.1 zooms in by 10 %, -0.1 out by 10 %. In the focused page a
-  // negative value leaves for the overview, as the pinch does.
+  // negative value steps one level out (Full window to the page, the page to the overview), as the
+  // pinch does.
   dispatcher.register("test.magnify") { params in
     guard let by = params["by"]?.number else {
       throw RPCError.invalidParams("by (number) required")
     }
     if controller.presentation == .focused {
-      if by < 0, !controller.launcher.isOpen { controller.perform(.showOverview) }
+      if by < 0, !controller.launcher.isOpen { controller.stepOut() }
       return controller.canvasState()
     }
     let canvas = try view()

@@ -303,11 +303,11 @@ final class LauncherController {
     default: break
     }
     Log.info(.launcher, "commit kind=\(row.kind)")
-    let location = location
+    let (location, scope) = (location, model.scope)
     close(committed: true)
     switch row.kind {
     case .switchTab:
-      app.activate(row.target)
+      if scope == .pages { app.openInFullWindow(tab: row.target) } else { app.activate(row.target) }
     case .openURL:
       go(row.target, location, edge: .navigatedFrom)
     case .history, .bookmark:

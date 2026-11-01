@@ -18,6 +18,9 @@ extension AppController {
       else { return }
       BSCef.focusBrowser(tab.browserId)
     }
+    root.onEmptyClick = { [weak self] in self?.emptyClicked() }
+    root.onExitFullWindow = { [weak self] in self?.setFullWindow(false) }
+    root.caption.expand.onClick = { [weak self] in self?.setFullWindow(true) }
     runs.onChange = { [weak self] in self?.refreshChrome() }
     root.approvalCard.onDecide = { [weak self] item, allow in
       do {
@@ -30,6 +33,8 @@ extension AppController {
     viewsById["root"] = root
     viewsById["commandButton"] = root.commandButton
     viewsById["caption"] = root.caption
+    viewsById["captionExpand"] = root.caption.expand
+    viewsById["exitFullWindow"] = root.exitControl
     viewsById["findField"] = root.findBar
     for (id, view) in root.findBar.keyViews where id != "findField" { viewsById[id] = view }
     viewsById["canvasTitle"] = root.canvasView?.titleField
@@ -235,7 +240,7 @@ extension AppController {
     case .zoomIn: root?.canvasView?.zoom(by: CanvasView.zoomStep)
     case .zoomOut:
       if presentation == .focused {
-        showOverview()
+        stepOut()
       } else {
         root?.canvasView?.zoom(by: 1 / CanvasView.zoomStep)
       }

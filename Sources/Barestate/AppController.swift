@@ -53,15 +53,32 @@ final class AppController: NSObject, NSApplicationDelegate, NSWindowDelegate {
   }
   /// Overview or the focused page, which is always the active tab. Not saved: a launch starts on
   /// the overview.
-  var presentation = BrowserCommand.Presentation.overview
+  var presentation = BrowserCommand.Presentation.overview {
+    didSet { if presentation == .overview { fillsWindow = false } }
+  }
+  /// The focused page fills the window (Full window). Only a focused page can; the overview ends it.
+  var fillsWindow = false {
+    didSet { root?.fillsWindow = fillsWindow }
+  }
+  var viewLevel: ViewLevel { ViewLevel(presentation, fillsWindow: fillsWindow) }
+  /// The one step a pinch out has taken so far, so the rest of the same gesture does not take another.
+  var pinchStepped = false
+  /// The card the last plain click opened and where, so a double-click can reach it after the
+  /// canvas has gone.
+  var cardClick: (node: String, point: CGPoint)?
+  /// Whether the empty canvas has shown its first-run hint: once it has, it never shows again.
+  var hintState = HintState.unseen
+  enum HintState { case unseen, showing, done }
   private(set) lazy var camera = CameraTransition(app: self)
-  /// Times ⌘⇧\ from the key-down to a settled presentation, for `test.toggleTimings`.
+  /// Times ⌘⇧\ and ⌘↩ from the key-down to a settled view level, for `test.toggleTimings`.
   private(set) lazy var toggles = ToggleTimer { [unowned self] target in
-    presentation == target && MotionLedger.shared.inFlight.isEmpty
+    viewLevel == target && MotionLedger.shared.inFlight.isEmpty
   }
   /// The page's last look being captured (for at most `Motion.previewCaptureTimeout`) before the
   /// overview replaces it.
   var leaving: Task<Void, Never>?
+  /// The same wait before a page takes the window or gives it back.
+  var filling: Task<Void, Never>?
   /// Set by main: the app owns the only reference so the database closes before exit.
   var database: @MainActor () -> Store? = { nil }
   private var closing: [Int32: Tab] = [:]
@@ -96,6 +113,8 @@ final class AppController: NSObject, NSApplicationDelegate, NSWindowDelegate {
     window.titlebarAppearsTransparent = true
     window.titleVisibility = .hidden
     window.contentMinSize = NSSize(width: 720, height: 600)
+    window.collectionBehavior.insert(.fullScreenPrimary)
+    window.acceptsMouseMovedEvents = true
     window.delegate = self
     window.isReleasedWhenClosed = false
     // Nothing may be written outside the data dir, and window restoration writes to
@@ -123,6 +142,7 @@ final class AppController: NSObject, NSApplicationDelegate, NSWindowDelegate {
 
   func contextInitialized() {
     network.start()
+    hintState = FileManager.default.fileExists(atPath: dataDir.hintSeen) ? .done : .unseen
     window?.makeKeyAndOrderFront(nil)
     activateApp()
     openTab(url: startURL)
@@ -296,6 +316,11 @@ final class AppController: NSObject, NSApplicationDelegate, NSWindowDelegate {
     requestQuit("window-close")
     return false
   }
+
+  /// Native full screen has no title bar, so a page that fills the window loses its top inset;
+  /// the frame change alone does not say so.
+  func windowDidEnterFullScreen(_ notification: Notification) { root?.layoutChildren() }
+  func windowDidExitFullScreen(_ notification: Notification) { root?.layoutChildren() }
 
   /// The launcher field gets its own editor: the window's shared one also serves the find bar,
   /// and the inset and whole-glyph metrics below belong to the launcher's 18 pt type only.

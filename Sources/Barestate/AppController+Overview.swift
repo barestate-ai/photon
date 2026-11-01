@@ -37,6 +37,7 @@ extension AppController {
       root.focusContext.refresh()
       root.canvasView?.refresh()
     }
+    refreshHint()
     toggles.check()
   }
 
@@ -57,6 +58,8 @@ extension AppController {
   /// back.
   func showOverview() {
     guard presentation == .focused, !quitting, leaving == nil else { return }
+    filling?.cancel()
+    filling = nil
     let leavingId = activeTabId
     let leave = { [self] in
       camera.toOverview(of: activeNodeId) {
@@ -111,6 +114,7 @@ extension AppController {
     root.setContext(activeNodeId.map { canvas.graph.context(of: $0) } ?? ([], []))
     root.focusContext?.refresh()
     root.canvasView?.refresh()
+    refreshHint()
   }
 
   @objc func toggleOverview() {
@@ -123,6 +127,8 @@ extension AppController {
     toggles.begin(toward: presentation == .overview ? .focused : .overview)
     perform(presentation == .overview ? .focusPage : .showOverview)
   }
+
+  @objc func toggleNativeFullScreen() { window?.toggleFullScreen(nil) }
 
   @objc func zoomInOverview() { perform(.zoomIn) }
   @objc func zoomOutOverview() { perform(.zoomOut) }
@@ -157,6 +163,15 @@ extension AppController {
 
   /// Enables a command's menu item or says why not, in its tooltip.
   func validateCommandItem(_ item: NSMenuItem) -> Bool {
+    if item.action == #selector(AppController.toggleFullWindow) {
+      item.title = fillsWindow ? "Exit Full Window" : "Open Full Window"
+      return viewLevel.canToggleFullWindow(hasSelection: root?.canvasView?.selection != nil)
+    }
+    if item.action == #selector(AppController.toggleNativeFullScreen) {
+      item.title =
+        window?.styleMask.contains(.fullScreen) == true ? "Exit Full Screen" : "Enter Full Screen"
+      return true
+    }
     guard let command = command(for: item.action) else { return true }
     if item.action == #selector(AppController.toggleOverview) {
       item.title = presentation == .overview ? "Show Page" : "Show Overview"
@@ -172,18 +187,18 @@ extension AppController {
   }
 }
 
-/// Milliseconds from the ⌘⇧\ key-down at `sendEvent` until the presentation it asked for shows
+/// Milliseconds from the ⌘⇧\ or ⌘↩ key-down at `sendEvent` until the view level it asked for shows
 /// and nothing is still moving. A landing starts its own fades after the camera ends, so a
 /// settled state is confirmed one turn of the run loop later.
 @MainActor
 final class ToggleTimer {
   private(set) var times: [Double] = []
-  private var asked: (at: UInt64, target: BrowserCommand.Presentation)?
-  private let settled: (BrowserCommand.Presentation) -> Bool
+  private var asked: (at: UInt64, target: ViewLevel)?
+  private let settled: (ViewLevel) -> Bool
 
-  init(settled: @escaping (BrowserCommand.Presentation) -> Bool) { self.settled = settled }
+  init(settled: @escaping (ViewLevel) -> Bool) { self.settled = settled }
 
-  func begin(toward target: BrowserCommand.Presentation) {
+  func begin(toward target: ViewLevel) {
     let now = DispatchTime.now().uptimeNanoseconds
     let stamp = (NSApp as? BarestateApplication)?.keyDownAt ?? 0
     asked = (now - stamp < 1_000_000_000 ? stamp : now, target)

@@ -62,6 +62,11 @@ extension AppController {
       "toolbar": .bool(window.toolbar != nil),
       "titlebarAccessories": .number(Double(window.titlebarAccessoryViewControllers.count)),
       "trafficLights": .object(lights),
+      "fullScreen": .bool(window.styleMask.contains(.fullScreen)),
+      "styleMask": .number(Double(window.styleMask.rawValue)),
+      "onActiveSpace": .bool(window.isOnActiveSpace),
+      "screen": window.screen.map { json($0.frame) } ?? .null,
+      "screenVisible": window.screen.map { json($0.visibleFrame) } ?? .null,
       "minContentSize": [
         "w": .number(window.contentMinSize.width), "h": .number(window.contentMinSize.height),
       ],
@@ -122,6 +127,60 @@ extension AppController {
       "visible": .bool(!view.isHidden), "title": .string(shown.title), "host": .string(shown.host),
       "security": .string(shown.security.rawValue), "text": .string(view.detailText),
       "fits": .bool(view.detailFits), "frame": windowRect(view),
+      "control": [
+        "visible": .bool(!view.expand.isHiddenOrHasHiddenAncestor),
+        "label": .string(view.expand.accessibilityLabel() ?? ""),
+        "frame": windowRect(view.expand),
+      ],
+    ]
+  }
+
+  /// `test.ui.fullWindow`: the level, what fills the window, and the visible area of everything
+  /// Full window hides. Frames are window points from the top left.
+  func fullWindowState() -> JSON {
+    guard let root, let window else { return .null }
+    let content = root.convert(root.bounds, to: nil)
+    func area(_ view: NSView?) -> Double {
+      guard let view, !view.isHiddenOrHasHiddenAncestor else { return 0 }
+      var up: NSView? = view
+      while let current = up {
+        if current.layer?.opacity == 0 { return 0 }
+        up = current.superview
+      }
+      let rect = view.convert(view.bounds, to: nil).intersection(content)
+      return rect.isNull ? 0 : Double(rect.width * rect.height)
+    }
+    func control(_ view: NSView) -> JSON {
+      [
+        "visible": .bool(area(view) > 0), "area": .number(area(view)),
+        "label": .string(view.accessibilityLabel() ?? ""), "frame": windowRect(view),
+      ]
+    }
+    let canvas = root.canvasView
+    let chip = canvas?.hovered.flatMap { id in canvas?.cardRect(id).map(CanvasView.chipRect(in:)) }
+    var hovered: JSON = ["visible": false]
+    if let chip, let canvas, let id = canvas.hovered {
+      var rect = canvas.convert(chip, to: nil)
+      rect.origin.y = window.frame.height - rect.maxY
+      hovered = ["visible": true, "node": .string(id), "text": "Open", "frame": json(rect)]
+    }
+    return [
+      "active": .bool(fillsWindow),
+      "titleBarInset": .number(root.titleBarInset),
+      "windowContent": windowRect(root),
+      "exitControl": control(root.exitControl),
+      "captionControl": control(root.caption.expand),
+      "hint": [
+        "visible": .bool(area(root.hint) > 0), "text": .string(root.hint.stringValue),
+        "frame": windowRect(root.hint),
+      ],
+      "cursor": .string(canvas?.cursorName ?? "arrow"),
+      "chip": hovered,
+      "visibleArea": [
+        "caption": .number(area(root.caption)), "wordmark": .number(area(root.wordmark)),
+        "mark": .number(area(root.mark)), "focusContext": .number(area(root.focusContext)),
+        "canvasTitle": .number(area(canvas?.titleField)),
+      ],
     ]
   }
 

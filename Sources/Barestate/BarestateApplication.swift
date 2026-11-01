@@ -18,6 +18,7 @@ final class BarestateApplication: BSApplication, CefAppProtocol {
   private(set) var keyDownAt: UInt64 = 0
   private var handlingSendEvent = false
   private var synthetic: [Int64: CheckedContinuation<Void, Never>] = [:]
+  private var swallowMouseUp = false
 
   func isHandlingSendEvent() -> Bool { handlingSendEvent }
 
@@ -27,12 +28,19 @@ final class BarestateApplication: BSApplication, CefAppProtocol {
 
   override func sendEvent(_ event: NSEvent) {
     if event.type == .keyDown { keyDownAt = DispatchTime.now().uptimeNanoseconds }
-    // Pinching in on a page leaves it for the overview; the page never sees the gesture.
-    if event.type == .magnify, event.magnification < 0, controller?.presentation == .focused,
-      event.window === controller?.window, controller?.launcher.isOpen == false
-    {
-      controller?.perform(.showOverview)
+    // Pinching in on a page leaves it a level at a time; the page never sees the gesture.
+    if event.type == .magnify, controller?.pinchedOut(event) == true { return }
+    // The second press of a double-click on a card may land on the page the first one opened.
+    if event.type == .leftMouseDown, controller?.claimsDoubleClick(event) == true {
+      swallowMouseUp = true
       return
+    }
+    if event.type == .leftMouseUp, swallowMouseUp {
+      swallowMouseUp = false
+      return
+    }
+    if event.type == .mouseMoved, event.window === controller?.window, let root = controller?.root {
+      root.pointerMoved(to: root.convert(event.locationInWindow, from: nil))
     }
     let shortcut = shortcutItem(for: event)
     // Holding a key the app already acted on repeats that key-down, and the page it focused

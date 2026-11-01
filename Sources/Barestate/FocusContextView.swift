@@ -88,6 +88,8 @@ final class FocusContextView: NSView {
   func refresh() {
     guard let root = app.root else { return }
     let focused = app.presentation == .focused && app.activeTab != nil
+    // A page that fills the window leaves its context as it was while the chrome fades out.
+    if focused && root.fillsWindow { return }
     let wasShown = !isHidden
     isHidden = !focused
     guard focused else { return mark.hide() }
