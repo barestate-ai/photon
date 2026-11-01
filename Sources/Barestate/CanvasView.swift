@@ -11,7 +11,6 @@ final class CanvasView: NSView, NSTextFieldDelegate {
   static let fitMargin = 112.0
   /// Framing never magnifies: a lone card stays card-sized instead of filling the window.
   static let fitZoom = 1.0
-  static let zoomStep = 1.25
   /// A press that moves less than this is a click.
   static let dragThreshold = 4.0
   static let phasedIdle = Duration.seconds(2)
@@ -21,6 +20,7 @@ final class CanvasView: NSView, NSTextFieldDelegate {
   unowned let app: AppController
   let titleField = NSTextField()
   let legend = LegendView()
+  let zoomPill = ZoomPillView()
   /// The node elements are rebuilt when a client asks for the children, so a change is announced.
   private(set) var selected: String? {
     didSet {
@@ -42,6 +42,7 @@ final class CanvasView: NSView, NSTextFieldDelegate {
   private var gesturing = false
   private var still = Date.distantPast
   private var drag: Drag?
+  private var pan: Pan?
   private var reverting = false
   /// Set once a refresh has drawn the overview: cards and trails that appear after that enter,
   /// including those made while a page was in front. What the first draw finds (a restored
@@ -59,6 +60,13 @@ final class CanvasView: NSView, NSTextFieldDelegate {
     let start: CGPoint
     let origin: CGPoint
     let zoom: Double
+    var moved = false
+  }
+
+  /// A press on empty canvas: the camera follows the pointer from where it started.
+  private struct Pan {
+    let start: CGPoint
+    let origin: Viewport
     var moved = false
   }
 
@@ -84,6 +92,10 @@ final class CanvasView: NSView, NSTextFieldDelegate {
     setAccessibilityEnabled(true)
     addSubview(titleField)
     addSubview(legend)
+    addSubview(zoomPill)
+    zoomPill.onZoomOut = { [weak self] in self?.zoom(by: 1 / Viewport.zoomStep) }
+    zoomPill.onZoomIn = { [weak self] in self?.zoom(by: Viewport.zoomStep) }
+    zoomPill.onZoomToFit = { [weak self] in self?.zoomToFit() }
     titleField.wantsLayer = true
   }
 
@@ -101,12 +113,14 @@ final class CanvasView: NSView, NSTextFieldDelegate {
     titleField.frame = NSRect(x: inset, y: 84 - (line - 34) / 2, width: 320, height: line)
     // Beside the command button, or above it when a larger text scale makes them meet.
     let clear = (bounds.width - CommandButton.width) / 2 - 8
-    let above = inset + legend.frame.width > clear
-    legend.frame.origin = NSPoint(
-      x: inset,
-      y: above
-        ? bounds.height - 16 - CommandButton.height - 8 - LegendView.height
-        : bounds.height - 32 - LegendView.height)
+    let above = inset + max(legend.frame.width, zoomPill.frame.width) > clear
+    let legendY =
+      above
+      ? bounds.height - 16 - CommandButton.height - 8 - LegendView.height
+      : bounds.height - 32 - LegendView.height
+    legend.frame.origin = NSPoint(x: inset, y: legendY)
+    // Where the legend would be even while it is hidden, so the pill never moves with it.
+    zoomPill.frame.origin = NSPoint(x: inset, y: legendY - 12 - zoomPill.frame.height)
     refresh()
   }
 
@@ -223,6 +237,7 @@ final class CanvasView: NSView, NSTextFieldDelegate {
     drawTrails(camera, entering: entering)
     hasDrawn = true
     legend.show(legendItems)
+    zoomPill.show(percent: camera.zoomPercent)
     titleField.stringValue =
       titleField.currentEditor() == nil ? graph.title : titleField.stringValue
   }
@@ -260,7 +275,7 @@ final class CanvasView: NSView, NSTextFieldDelegate {
       live.insert(key)
       let isNew = trails[key] == nil
       let line = trails[key] ?? makeTrail(key)
-      let route = EdgeRoute.make(from: from.cardFrame, to: to.cardFrame, bow: Trail.bow)
+      let route = EdgeRoute.make(from: drawnFrame(from), to: drawnFrame(to), bow: Trail.bow)
       line.path = Trail.path(route) { camera.screen($0, in: bounds.size) }
       Trail.style(line, kind: edge.kind, zoom: camera.zoom)
       if isNew && entering && visible.intersects(from.frame) && visible.intersects(to.frame) {
@@ -271,6 +286,17 @@ final class CanvasView: NSView, NSTextFieldDelegate {
       trails.removeValue(forKey: key)?.removeFromSuperlayer()
     }
     flowNewestTrails(camera)
+  }
+
+  /// The card as it is drawn: a lifted card is larger about its centre, and its trails meet that
+  /// edge.
+  private func drawnFrame(_ node: PageNode) -> CGRect {
+    let frame = node.cardFrame
+    guard drag?.id == node.id, drag?.moved == true, !app.motionReduced else { return frame }
+    let lift = Double(Motion.pickupScale)
+    return CGRect(
+      x: node.x + (frame.minX - node.x) * lift, y: node.y + (frame.minY - node.y) * lift,
+      width: frame.width * lift, height: frame.height * lift)
   }
 
   /// The Muse trail into the page each working run used most recently drifts, ambient, until the
@@ -415,15 +441,16 @@ final class CanvasView: NSView, NSTextFieldDelegate {
 
   /// The pointer, really or by a hook, is at `point`: the card under it is hovered, and the cursor
   /// says what a press does there. A card opens on a click (pointing hand); the empty canvas pans
-  /// (open hand).
+  /// (open hand); a card being dragged or the canvas being panned is held (closed hand).
   func pointerMoved(to point: CGPoint) {
-    guard !isHidden else {
+    guard !isHidden, !zoomPill.frame.contains(point) else {
       cursor = .arrow
       return hover(nil)
     }
-    let id = drag == nil && !gesturing ? nodeId(at: point) : nil
+    let id = drag == nil && pan == nil && !gesturing ? nodeId(at: point) : nil
     hover(id)
-    cursor = id == nil ? .openHand : .pointingHand
+    cursor =
+      drag?.moved == true || pan != nil ? .closedHand : (id == nil ? .openHand : .pointingHand)
     cursor.set()
   }
 
@@ -434,6 +461,7 @@ final class CanvasView: NSView, NSTextFieldDelegate {
     switch cursor {
     case .pointingHand: "pointing-hand"
     case .openHand: "open-hand"
+    case .closedHand: "closed-hand"
     default: "arrow"
     }
   }
@@ -482,7 +510,7 @@ final class CanvasView: NSView, NSTextFieldDelegate {
 
   private func releaseGesture() {
     gestureEnd?.cancel()
-    guard gesturing, drag?.moved != true else { return }
+    guard gesturing, drag?.moved != true, pan?.moved != true else { return }
     gesturing = false
     endStretch()
     app.canvas.gesture(false)
@@ -545,6 +573,15 @@ final class CanvasView: NSView, NSTextFieldDelegate {
     settleRendering()
   }
 
+  /// ⌘-scroll: `dy` of wheel travel (positive zooms in) around `point`. The picture does not
+  /// stretch at a limit as a pinch does: a wheel has no end to spring back from.
+  func zoomScroll(dy: Double, at point: CGPoint, idle: Duration = .milliseconds(250)) {
+    holdGesture(idle: idle)
+    setViewport(
+      viewport.zoomed(by: Viewport.wheelFactor(dy), around: point, in: bounds.size))
+    settleRendering()
+  }
+
   func zoomToFit() {
     takeCamera()
     setViewport(
@@ -554,11 +591,17 @@ final class CanvasView: NSView, NSTextFieldDelegate {
 
   override func scrollWheel(with event: NSEvent) {
     // A wheel mouse reports lines, a trackpad points.
-    let unit = event.hasPreciseScrollingDeltas ? 1.0 : 10.0
+    let precise = event.hasPreciseScrollingDeltas
     let phased = !event.phase.isEmpty || !event.momentumPhase.isEmpty
-    scroll(
-      dx: event.scrollingDeltaX * unit, dy: event.scrollingDeltaY * unit,
-      idle: phased ? Self.phasedIdle : .milliseconds(250))
+    let idle = phased ? Self.phasedIdle : Duration.milliseconds(250)
+    if event.modifierFlags.contains(.command) {
+      zoomScroll(
+        dy: event.scrollingDeltaY * (precise ? 1.0 : 40.0),
+        at: convert(event.locationInWindow, from: nil), idle: idle)
+    } else {
+      let unit = precise ? 1.0 : 10.0
+      scroll(dx: event.scrollingDeltaX * unit, dy: event.scrollingDeltaY * unit, idle: idle)
+    }
     let over: NSEvent.Phase = [.ended, .cancelled]
     let momentumEnded = !event.momentumPhase.isDisjoint(with: over)
     let fingersLifted = event.momentumPhase.isEmpty && !event.phase.isDisjoint(with: over)
@@ -622,8 +665,12 @@ final class CanvasView: NSView, NSTextFieldDelegate {
   override func mouseDown(with event: NSEvent) {
     window?.makeFirstResponder(app.root)
     let point = convert(event.locationInWindow, from: nil)
+    guard !zoomPill.frame.contains(point) else { return }
     guard let id = nodeId(at: point), let node = graph.nodes.first(where: { $0.id == id })
-    else { return }
+    else {
+      pan = Pan(start: point, origin: viewport)
+      return pointerMoved(to: point)
+    }
     selected = id
     drag = Drag(
       id: id, start: point, origin: CGPoint(x: node.x, y: node.y), zoom: viewport.zoom)
@@ -632,8 +679,8 @@ final class CanvasView: NSView, NSTextFieldDelegate {
   }
 
   override func mouseDragged(with event: NSEvent) {
-    guard var held = drag else { return }
     let point = convert(event.locationInWindow, from: nil)
+    guard var held = drag else { return panned(to: point) }
     let (dx, dy) = (point.x - held.start.x, point.y - held.start.y)
     if !held.moved {
       guard hypot(dx, dy) >= Self.dragThreshold else { return }
@@ -642,17 +689,40 @@ final class CanvasView: NSView, NSTextFieldDelegate {
       takeCamera()
       holdGesture()
       animateHold(held.id, .nodePickup)
+      pointerMoved(to: point)
     }
     let target = CanvasPoint(x: held.origin.x + dx / held.zoom, y: held.origin.y + dy / held.zoom)
     app.canvas.edit { $0.move(node: held.id, to: target) }
   }
 
+  /// The camera follows a press on empty canvas. A press that has not left the click radius
+  /// pans nothing, and once it has, the pan is measured from where the press began.
+  private func panned(to point: CGPoint) {
+    guard var held = pan else { return }
+    let delta = CGSize(width: point.x - held.start.x, height: point.y - held.start.y)
+    if !held.moved {
+      guard hypot(delta.width, delta.height) >= Self.dragThreshold else { return }
+      held.moved = true
+      pan = held
+      takeCamera()
+    }
+    holdGesture()
+    setViewport(held.origin.panned(byScreen: delta))
+  }
+
   override func mouseUp(with event: NSEvent) {
+    if let held = pan {
+      pan = nil
+      if held.moved { releaseGesture() }
+      return pointerMoved(to: convert(event.locationInWindow, from: nil))
+    }
     guard let held = drag else { return }
     drag = nil
     animateHold(held.id, held.moved ? .nodeDrop : .nodePress)
     if held.moved {
       releaseGesture()
+      refresh()
+      pointerMoved(to: convert(event.locationInWindow, from: nil))
     } else {
       app.cardClick = (held.id, event.locationInWindow)
       app.focusNode(held.id)
@@ -703,6 +773,7 @@ final class CanvasView: NSView, NSTextFieldDelegate {
     var live = Set<String>()
     var elements: [Any] = [titleField]
     if !legend.isHidden { elements.append(legend) }
+    elements.append(zoomPill)
     for node in graph.nodes {
       live.insert(node.id)
       let element = nodeElements[node.id] ?? NodeAccessibilityElement()

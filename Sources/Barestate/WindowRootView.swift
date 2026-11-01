@@ -156,7 +156,8 @@ final class WindowRootView: NSView {
   private func linkKeyLoop() {
     let title = canvasView.map { [$0.titleField] } ?? []
     let loop: [NSView] =
-      [self] + approvalCard.keyViews + title + [commandButton, phoneChip.disconnect]
+      [self] + approvalCard.keyViews + title + (canvasView?.zoomPill.keyViews ?? [])
+      + [commandButton, phoneChip.disconnect]
       + findBar.keyViews.map(\.view)
       + [self]
     for (from, to) in zip(loop, loop.dropFirst()) { from.nextKeyView = to }
@@ -183,6 +184,7 @@ final class WindowRootView: NSView {
     caption.applyTextScale()
     findBar.applyTextScale()
     canvasView?.legend.show(canvasView?.legend.items ?? [], force: true)
+    canvasView?.zoomPill.applyTextScale()
     launcher.applyTextScale()
     layoutChildren()
   }

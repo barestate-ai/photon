@@ -72,6 +72,7 @@ func registerTestHooks(
       "cefBrowserCount": .number(Double(controller.cefBrowserCount)),
       "canvas": controller.canvasState(),
       "overview": controller.overviewState(),
+      "zoomPill": controller.zoomPillState(),
       "focus": controller.focusState(),
       "chrome": controller.chromeState(),
       "launcher": controller.launcherState(),
@@ -327,7 +328,12 @@ func registerTestHooks(
     guard let id = params["target"]?.string, let view = controller.hookView(id),
       let win = view.window, !view.isHiddenOrHasHiddenAncestor
     else { throw RPCError.invalidParams("target (a visible view id) required") }
-    let start = view.convert(NSPoint(x: view.bounds.midX, y: view.bounds.midY), to: nil)
+    // x and y are measured from the view's top left, as for test.click; the middle by default.
+    let y = params["y"]?.number ?? view.bounds.height / 2
+    let start = view.convert(
+      NSPoint(
+        x: params["x"]?.number ?? view.bounds.width / 2,
+        y: view.isFlipped ? y : view.bounds.height - y), to: nil)
     // dy grows downward, as everywhere else in the hooks.
     lastDrag = NSPoint(
       x: start.x + (params["dx"]?.number ?? 0), y: start.y - (params["dy"]?.number ?? 0))

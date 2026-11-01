@@ -39,6 +39,14 @@ class ChromeButton: NSButton {
       .withSymbolConfiguration(config)
   }
 
+  /// A button that reads as text instead of a symbol.
+  func setText(_ text: String, font: NSFont) {
+    image = nil
+    imagePosition = .noImage
+    attributedTitle = NSAttributedString(
+      string: text, attributes: [.font: font, .foregroundColor: contentTintColor ?? Design.ink])
+  }
+
   @objc private func clicked() {
     onClick?()
   }

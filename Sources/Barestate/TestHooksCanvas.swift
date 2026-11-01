@@ -64,6 +64,7 @@ extension AppController {
         "dimmed": .bool(look.hasImage && look.preview == .stale),
         "note": .string(look.hasImage && look.preview == .stale ? "Preview from earlier" : ""),
         "muse": .string(look.muse), "runs": .array(look.runs.map { .string($0) }),
+        "lift": card.liftState(zoom: view.zoomLevel),
       ]
     }
     let zoom = view.zoomLevel
@@ -73,6 +74,7 @@ extension AppController {
       return [
         "from": .string(parts[0]), "to": .string(parts[1]), "kind": .string(parts[2]),
         "color": .string(hexString(line.strokeColor)),
+        "start": point(of: line.path, end: false), "end": point(of: line.path, end: true),
         "width": .number((line.lineWidth / zoom * 1e4).rounded() / 1e4),
         "dash": .array(
           (line.lineDashPattern ?? []).map {
@@ -82,6 +84,18 @@ extension AppController {
         "dashPhase": .number(((line.presentation() ?? line).lineDashPhase * 1e3).rounded() / 1e3),
       ]
     }
+    func point(of path: CGPath?, end: Bool) -> JSON {
+      var found = CGPoint.zero
+      path?.applyWithBlock { element in
+        let points = element.pointee.points
+        switch element.pointee.type {
+        case .moveToPoint where !end: found = points[0]
+        case .addQuadCurveToPoint where end: found = points[1]
+        default: break
+        }
+      }
+      return ["x": .number(found.x), "y": .number(found.y)]
+    }
     let titleFrame = frame(view.titleField.frame)
     let legend = view.legend
     var label: JSON = .null
@@ -90,6 +104,7 @@ extension AppController {
     }
     return [
       "visible": .bool(!view.isHiddenOrHasHiddenAncestor),
+      "cursor": .string(view.cursorName),
       "size": ["w": .number(view.bounds.width), "h": .number(view.bounds.height)],
       "selection": view.selection.map { .string($0) } ?? .null,
       "title": [
@@ -164,6 +179,37 @@ extension AppController {
   }
 }
 
+@MainActor
+extension AppController {
+  /// `test.ui.zoomPill`: the overview's zoom pill, null in the other presentations. Frames are
+  /// window points from the top left.
+  func zoomPillState() -> JSON {
+    guard let view = root?.canvasView, !view.isHiddenOrHasHiddenAncestor else { return .null }
+    let pill = view.zoomPill
+    func control(_ button: ChromeButton) -> JSON {
+      ["label": .string(button.accessibilityLabel() ?? ""), "frame": windowRect(button)]
+    }
+    return [
+      "value": .string("\(pill.shown)%"), "label": .string(pill.percent.accessibilityLabel() ?? ""),
+      "frame": windowRect(pill),
+      "out": control(pill.out), "percent": control(pill.percent), "in": control(pill.into),
+    ]
+  }
+}
+
+extension NodeCard {
+  /// The press and lift as they are drawn now: the scale beyond the camera's zoom and the shadow.
+  func liftState(zoom: Double) -> JSON {
+    let shown = layer.presentation() ?? layer
+    let body = cardLayer.presentation() ?? cardLayer
+    func round4(_ value: Double) -> JSON { .number((value * 1e4).rounded() / 1e4) }
+    return [
+      "scale": round4(Double(shown.transform.m11) / zoom),
+      "shadow": round4(Double(body.shadowOpacity)),
+    ]
+  }
+}
+
 /// Stand-ins for the pointer gestures that move a node, pan and zoom the camera and edit the
 /// title: they reach the same graph writes. `gesture: true` / `false` brackets a held gesture.
 @MainActor
@@ -213,18 +259,31 @@ func registerPointerHooks(_ dispatcher: RPCDispatcher, controller: AppController
     return view
   }
 
+  // `modifier: "cmd"` is ⌘-scroll: `dy` zooms (120 is one ⌘= step, positive zooms in) around `at`,
+  // the window point from the top left, or the middle of the view.
   dispatcher.register("test.scroll") { params in
-    guard let dx = params["dx"]?.number, let dy = params["dy"]?.number else {
-      throw RPCError.invalidParams("dx and dy (numbers) required")
+    guard let dy = params["dy"]?.number else {
+      throw RPCError.invalidParams("dy (number) required, dx optional")
     }
     // The launcher covers the canvas, so a real scroll never reaches it.
     let canvas = try view()
-    if !controller.launcher.isOpen { canvas.scroll(dx: dx, dy: dy) }
+    guard !controller.launcher.isOpen else { return controller.canvasState() }
+    if params["modifier"]?.string == "cmd" {
+      canvas.zoomScroll(
+        dy: dy,
+        at: CGPoint(
+          x: params["at"]?["x"]?.number ?? canvas.bounds.midX,
+          y: params["at"]?["y"]?.number ?? canvas.bounds.midY))
+    } else {
+      canvas.scroll(dx: params["dx"]?.number ?? 0, dy: dy)
+    }
     return controller.canvasState()
   }
 
   // `pan` {dx, dy} scrolls the overview by that much on every display-link tick, back and forth
-  // every 30 ticks, as a trackpad would, without a socket round trip per step. `stop` returns
+  // every 30 ticks, as a trackpad would, without a socket round trip per step. With `press`
+  // {x, y} it presses there and drags the pointer by that much per tick instead, through the
+  // mouse handlers. `stop` returns
   // `intervalsMs` between the commits of consecutive pan steps (between ticks when nothing
   // panned), the raw `tickIntervalsMs`, and `steps`, `commits` and `notPresented` counts.
   dispatcher.register("test.frameProbe") { params in
@@ -234,8 +293,15 @@ func registerPointerHooks(_ dispatcher: RPCDispatcher, controller: AppController
       let pan = try params["pan"].map { _ in
         (
           dx: params["pan"]?["dx"]?.number ?? 0, dy: params["pan"]?["dy"]?.number ?? 0,
-          canvas: try view()
+          canvas: try view(),
+          // A press at this window point (from the top left) that the pan drags, instead of scrolling.
+          press: params["pan"]?["press"].flatMap { spot in
+            spot["x"]?.number.flatMap { x in spot["y"]?.number.map { CGPoint(x: x, y: $0) } }
+          }
         )
+      }
+      if let pan, let press = pan.press, pan.canvas.nodeId(at: press) != nil {
+        throw RPCError.failure("the press at \(press) is on a card, not on empty canvas")
       }
       probe.start(on: root, pan: pan)
       return ["running": .bool(true)]
@@ -341,14 +407,21 @@ final class FrameProbe: NSObject {
   private var last: CFTimeInterval?
   private var lastCommit: CFTimeInterval?
   private var result = Result()
-  private var pan: (dx: Double, dy: Double, canvas: CanvasView)?
+  typealias Pan = (dx: Double, dy: Double, canvas: CanvasView, press: CGPoint?)
+  private var pan: Pan?
+  private var pointer = CGPoint.zero
   private var expected: (layer: CALayer, position: CGPoint)?
 
-  func start(on view: NSView, pan: (dx: Double, dy: Double, canvas: CanvasView)? = nil) {
+  func start(on view: NSView, pan: Pan? = nil) {
     link?.invalidate()
+    releasePress()
     result = Result()
     (last, lastCommit, expected) = (nil, nil, nil)
     self.pan = pan
+    if let pan, let press = pan.press {
+      pointer = press
+      pan.canvas.mouseDown(with: mouseEvent(.leftMouseDown, at: press, in: pan.canvas))
+    }
     link = view.displayLink(target: self, selector: #selector(tick(_:)))
     link?.add(to: .main, forMode: .common)
   }
@@ -366,7 +439,13 @@ final class FrameProbe: NSObject {
     CATransaction.setCompletionBlock { [weak self] in
       MainActor.assumeIsolated { self?.committed(at: CACurrentMediaTime()) }
     }
-    pan.canvas.scroll(dx: pan.dx * direction, dy: pan.dy * direction)
+    if pan.press != nil {
+      pointer.x += pan.dx * direction
+      pointer.y += pan.dy * direction
+      pan.canvas.mouseDragged(with: mouseEvent(.leftMouseDragged, at: pointer, in: pan.canvas))
+    } else {
+      pan.canvas.scroll(dx: pan.dx * direction, dy: pan.dy * direction)
+    }
     CATransaction.commit()
     expected = pan.canvas.cards.values.first { !$0.layer.isHidden }
       .map { ($0.layer, $0.layer.position) }
@@ -381,6 +460,21 @@ final class FrameProbe: NSObject {
   func stop() -> Result {
     link?.invalidate()
     link = nil
+    releasePress()
     return result
+  }
+
+  private func releasePress() {
+    guard let pan, pan.press != nil else { return }
+    pan.canvas.mouseUp(with: mouseEvent(.leftMouseUp, at: pointer, in: pan.canvas))
+    self.pan = nil
+  }
+
+  private func mouseEvent(_ type: NSEvent.EventType, at point: CGPoint, in view: NSView) -> NSEvent
+  {
+    NSEvent.mouseEvent(
+      with: type, location: view.convert(point, to: nil), modifierFlags: [],
+      timestamp: ProcessInfo.processInfo.systemUptime, windowNumber: view.window?.windowNumber ?? 0,
+      context: nil, eventNumber: 0, clickCount: 1, pressure: type == .leftMouseUp ? 0 : 1)!
   }
 }

@@ -38,6 +38,12 @@ extension AppController {
     viewsById["findField"] = root.findBar
     for (id, view) in root.findBar.keyViews where id != "findField" { viewsById[id] = view }
     viewsById["canvasTitle"] = root.canvasView?.titleField
+    viewsById["canvas"] = root.canvasView
+    if let pill = root.canvasView?.zoomPill {
+      viewsById["zoomOut"] = pill.out
+      viewsById["zoomPercent"] = pill.percent
+      viewsById["zoomIn"] = pill.into
+    }
     viewsById["approvalCard"] = root.approvalCard
     viewsById["approvalAllow"] = root.approvalCard.allow
     viewsById["approvalDeny"] = root.approvalCard.deny
@@ -237,12 +243,12 @@ extension AppController {
     case .reopenClosed: reopenClosedTab()
     case .showOverview: showOverview()
     case .focusPage: focusSelection()
-    case .zoomIn: root?.canvasView?.zoom(by: CanvasView.zoomStep)
+    case .zoomIn: root?.canvasView?.zoom(by: Viewport.zoomStep)
     case .zoomOut:
       if presentation == .focused {
         stepOut()
       } else {
-        root?.canvasView?.zoom(by: 1 / CanvasView.zoomStep)
+        root?.canvasView?.zoom(by: 1 / Viewport.zoomStep)
       }
     case .zoomToFit: root?.canvasView?.zoomToFit()
     case .stopRun:
