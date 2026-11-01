@@ -40,6 +40,8 @@ Photon looks for the key in this order: `MODEL_API_KEY` in the environment, then
 
 ## Barestate Muse (no key of your own)
 
+With no key of your own, Settings (⌘,) → Model offers **Use Barestate Muse**: paste an invite code and Connect registers this Mac (the code and the Mac's name cross the wire once) and stores the device token in the Keychain. Muse turns Available and calls go through the proxy; Disconnect removes the token. A key of your own always wins: with one present the section stays hidden and calls go direct to Meta. A device at its daily cap gets the proxy's 402 message as the call's refusal.
+
 The Barestate API at `https://api.barestate.xyz` lets Photon reach Muse without your own key: a small Cloudflare Worker (`server/barestate-api/`) holds the Meta key as a Worker secret and proxies `POST /v1/muse/responses` to Meta unchanged. Devices register once with an invite code (`POST /v1/devices`); the server stores only the SHA-256 of the device token, enforces per-device and global daily USD caps (402 with a clear message when reached), and logs only method, path, status, latency, a token-hash prefix, token counts and cost — never prompts, images, tokens or the key.
 
 For the owner: the three initial invite codes live in the `invites` key of the `barestate-api-kv` KV namespace — read them with `wrangler kv key get --remote --namespace-id b52da027ff9d4afc91acacbd86efa1d5 invites`, add more with `wrangler kv key put --remote` on the same key (a JSON list). Deploys and secret/KV upkeep are `scripts/deploy-api.sh` (idempotent). See D73 in [DECISIONS.md](DECISIONS.md).

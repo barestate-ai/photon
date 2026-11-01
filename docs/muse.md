@@ -2,6 +2,8 @@
 
 Muse runs on a Secure VM in Meta's cloud, so it cannot reach this Mac's socket. A tool server for Muse needs a public HTTPS URL. Photon's gateway serves it from the Mac through Tailscale Funnel, and a person connects it by hand in the Muse app. No API drives a user's Muse, so these steps are manual and cannot run in CI.
 
+(This page is about Muse reaching *into* Photon. How Photon reaches Muse the model — your own key, or Barestate Muse with an invite code — is "Barestate Muse" in the [README](../README.md).)
+
 **Status (FT5): not verified.** The gateway and pairing are built and tested against a local client, but nobody has yet tried the connector from a real Muse account. Three things are unknown until the first live attempt: whether Muse accepts a bearer token or insists on OAuth 2.1, which MCP protocol version Muse speaks, and whether Muse's network policy allows the Funnel host. If Muse cannot reach or authenticate to the URL, this path is recorded as "not run" in `DECISIONS.md` and the supported path is Muse Code over local stdio ([muse-code.md](muse-code.md)). No other tunnel is used.
 
 ## Steps
