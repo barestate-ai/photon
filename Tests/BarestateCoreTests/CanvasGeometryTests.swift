@@ -87,6 +87,29 @@ private func node(_ id: String, _ x: Double, _ y: Double) -> PageNode {
     let view = Viewport.fitting([CGRect(x: 0, y: 0, width: 10, height: 10)], in: size, margin: 96)
     #expect(view.zoom == 1.5)
   }
+
+  @Test func theZoomPercentIsTheRoundedZoom() {
+    #expect(Viewport(zoom: 0.8).zoomPercent == 80)
+    #expect(Viewport(zoom: 1).zoomPercent == 100)
+    #expect(Viewport(zoom: 1 / 1.25 / 1.25).zoomPercent == 64)
+    #expect(Viewport(zoom: 0.2).zoomPercent == 20)
+    #expect(Viewport(zoom: 9).zoomPercent == 150)
+  }
+
+  @Test func oneWheelStepIsOneZoomStepAndOppositeStepsCancel() {
+    #expect(Viewport.wheelFactor(0) == 1)
+    #expect(abs(Viewport.wheelFactor(Viewport.wheelStep) - Viewport.zoomStep) < 1e-12)
+    #expect(abs(Viewport.wheelFactor(-Viewport.wheelStep) * Viewport.zoomStep - 1) < 1e-12)
+  }
+
+  @Test func aWheelFactorIsFiniteAndPositiveForAnyDelta() {
+    for delta in [1e12, -1e12, .infinity, -.infinity, .nan] {
+      let factor = Viewport.wheelFactor(delta)
+      #expect(factor.isFinite && factor > 0)
+    }
+    #expect(Viewport().zoomed(by: Viewport.wheelFactor(1e12), around: .zero, in: size).zoom == 1.5)
+    #expect(Viewport().zoomed(by: Viewport.wheelFactor(-1e12), around: .zero, in: size).zoom == 0.2)
+  }
 }
 
 @Suite struct CanvasNavigationTests {

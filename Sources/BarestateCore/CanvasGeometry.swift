@@ -36,6 +36,21 @@ extension Viewport {
       height: size.height / zoom)
   }
 
+  /// What ⌘= multiplies the zoom by.
+  public static let zoomStep = 1.25
+  /// Wheel travel that counts as one ⌘= step when scrolling with ⌘ held.
+  public static let wheelStep = 120.0
+
+  /// The zoom as the percentage the overview shows.
+  public var zoomPercent: Int { Int((zoom * 100).rounded()) }
+
+  /// The zoom factor of ⌘-scrolling by `delta` (positive zooms in). The travel is capped so a
+  /// huge or non-finite delta still gives a finite factor that `zoomed` clamps to the range.
+  public static func wheelFactor(_ delta: Double) -> Double {
+    guard !delta.isNaN else { return 1 }
+    return pow(zoomStep, min(max(delta, -10 * wheelStep), 10 * wheelStep) / wheelStep)
+  }
+
   /// Content follows the scroll delta: scrolling down by `delta` moves the centre up the canvas.
   public func panned(byScreen delta: CGSize) -> Viewport {
     Viewport(cx: cx - delta.width / zoom, cy: cy - delta.height / zoom, zoom: zoom)
