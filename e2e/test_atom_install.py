@@ -3,11 +3,15 @@ with scratch overrides the full Not installed -> Install -> Ready flow, a cancel
 archive failing with a reason and no partial model, and a real act on the atom rung without a
 restart."""
 import io
+import json
 import os
 import shutil
+import signal
 import sqlite3
 import subprocess
+import sys
 import tarfile
+import time
 import unittest
 
 import bs
@@ -31,6 +35,16 @@ def children(pid):
             found.append((child, comm))
             pending.append(child)
     return found
+
+
+def pid_alive(pid):
+    try:
+        os.kill(pid, 0)
+    except ProcessLookupError:
+        return False
+    except PermissionError:
+        return True
+    return True
 
 
 def installer_processes(pid):
@@ -200,3 +214,103 @@ class AtomInstallTests(SettingsCase):
             timeout=300, what="the retried install to fail again")
         self.assertIn("checksum", again["detail"], again)
         save("atom-failed.json", {"first": failed, "retry": again})
+
+
+@unittest.skipUnless(os.path.exists(ARCHIVE), "dist/atom-tinyclick-4bit-v1.tar.gz is missing; run make atom-archive")
+class AtomQuitTests(SettingsCase):
+    """Quitting during an install stops the whole installer tree before the app exits."""
+
+    @classmethod
+    def setUpClass(cls):
+        cls.scratch = f"/tmp/bs-atom-quit-{os.getpid()}"
+        cls.model = f"{cls.scratch}/models/atom"
+        cls.env = {
+            "BARESTATE_RUNTIME_DIR": f"{cls.scratch}/Runtime",
+            "BARESTATE_ATOM_PYTHON": f"{cls.scratch}/Runtime/venv/bin/python",
+            "BARESTATE_ATOM_MODEL": cls.model,
+            "ATOM_ARCHIVE": ARCHIVE,
+        }
+        cls.fixtures = bs.Fixtures(LOG_DIR).start()
+        cls.data_dir = f"/tmp/bs-atom-{os.getpid()}-quit"
+        cls.app = bs.App(cls.data_dir, LOG_DIR, label=cls.__name__, env=cls.env).start()
+
+    @classmethod
+    def tearDownClass(cls):
+        cls.app.stop()
+        shutil.rmtree(cls.scratch, ignore_errors=True)
+
+    def test_quit_mid_install_leaves_no_process_and_a_relaunch_starts_clean(self):
+        self.open_settings()
+        self.call("test.click", {"target": "settings.atom.install"})
+        bs.wait_until(lambda: self.settings()["atom"]["state"] == "installing"
+                      and self.settings()["atom"]["lines"] > 0,
+                      what="the install to start with progress")
+        running = installer_processes(self.app.proc.pid)
+        self.assertTrue(running, "no installer process to outlive the quit")
+        pids = [pid for pid, _ in running]
+        # SIGTERM is the Cmd-Q path. App.stop would hide a leak: stop-app.sh SIGKILLs every
+        # descendant the app had when it was asked to stop.
+        began = time.monotonic()
+        os.kill(self.app.proc.pid, signal.SIGTERM)
+        self.app.proc.wait(timeout=bs.QUIT_TIMEOUT)
+        quit_s = time.monotonic() - began
+        survivors = [pid for pid in pids if pid_alive(pid)]
+        for pid in survivors:
+            os.kill(pid, signal.SIGKILL)
+        self.assertEqual(survivors, [], "installer processes outlived the quit")
+        self.app.stop(remove_data=False)  # the exit status, crash and clone checks
+        with open(os.path.join(self.data_dir, "logs", "photon.log")) as log:
+            self.assertIn("installer stopped", log.read())
+        save("atom-quit.json", {"pids": pids, "quitSeconds": round(quit_s, 2)})
+
+        type(self).app = bs.App(self.data_dir, LOG_DIR, label="AtomQuitRelaunch",
+                                env=self.env).start(fresh=False)
+        self.open_settings()
+        atom = self.settings()["atom"]
+        self.assertEqual((atom["state"], atom["installs"]), ("not-installed", 0), atom)
+        self.assertIn("Install Atom", self.labels())
+        self.assertEqual(installer_processes(self.app.proc.pid), [])
+        self.assertFalse(os.path.exists(f"{self.scratch}/Runtime/venv/bin/python"),
+                         "a quit install left a runtime behind")
+        self.assertFalse(os.path.exists(self.model), "a quit install left a model behind")
+
+
+HOLD_COPY = """
+import shutil, sys, time
+sys.path.insert(0, sys.argv[1])
+import install_model
+def hold(*args, **kwargs):
+    print("copying", flush=True)
+    time.sleep(60)
+shutil.copyfile = hold
+sys.argv = ["install_model.py", "--manifest", sys.argv[2], "--source", "file://" + sys.argv[3],
+            "--destination", sys.argv[4]]
+install_model.main()
+"""
+
+
+class ModelInstallTermTests(unittest.TestCase):
+    """The Settings cancel and a quit both end the installer with SIGTERM."""
+
+    def test_sigterm_mid_copy_removes_the_staging_dir_and_installs_nothing(self):
+        scratch = f"/tmp/bs-atom-term-{os.getpid()}"
+        self.addCleanup(shutil.rmtree, scratch, ignore_errors=True)
+        os.makedirs(f"{scratch}/source")
+        manifest = f"{scratch}/manifest.json"
+        with open(manifest, "w") as out:
+            json.dump({"files": [{"path": "a.bin", "bytes": 1, "sha256": "0"}], "bytesTotal": 1,
+                       "hardware": {"minFreeBytes": 1}}, out)
+        destination = f"{scratch}/models/atom"
+        proc = subprocess.Popen(
+            [sys.executable, "-c", HOLD_COPY, os.path.join(bs.ROOT, "runtime", "atom"), manifest,
+             f"{scratch}/source", destination],
+            stdout=subprocess.PIPE, stderr=subprocess.DEVNULL, text=True)
+        self.addCleanup(proc.kill)
+        self.assertEqual(proc.stdout.readline().strip(), "copying")
+        self.assertTrue(any(name.startswith(".atom-download-")
+                            for name in os.listdir(os.path.dirname(destination))))
+        proc.send_signal(signal.SIGTERM)
+        self.assertNotEqual(proc.wait(timeout=10), 0)
+        self.assertEqual([n for n in os.listdir(os.path.dirname(destination))
+                          if n.startswith(".atom-download-")], [], "SIGTERM left a staging dir")
+        self.assertFalse(os.path.exists(destination))

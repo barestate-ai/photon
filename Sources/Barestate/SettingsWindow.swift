@@ -543,6 +543,13 @@ final class SettingsWindow: NSObject, NSWindowDelegate {
     }
   }
 
+  /// Quit: stops the installer in flight. The task ends once its whole process tree is gone, so
+  /// the caller can wait for it before the process exits.
+  func stopInstaller() -> Task<Void, Never>? {
+    guard let installer else { return nil }
+    return Task.detached { await installer.cancelAndWait(timeout: .seconds(2.5)) }
+  }
+
   /// The latest installer line, shown while the install runs; a late line after it ends is dropped.
   private func atomProgress(_ line: String) {
     guard case .installing = atomInstallState else { return }

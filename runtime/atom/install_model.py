@@ -8,6 +8,7 @@ import hashlib
 import json
 from pathlib import Path, PurePosixPath
 import shutil
+import signal
 import sys
 import tempfile
 from urllib.parse import quote, urlparse, unquote
@@ -97,6 +98,8 @@ def main():
     parser.add_argument("--source", default="")
     parser.add_argument("--destination", type=Path, default=Path.home() / "Library/Application Support/Barestate/models/atom/tinyclick-4bit-v1/tinyclick-4bit")
     args = parser.parse_args()
+    # Settings cancel and quit send TERM; exiting through SystemExit removes the staging directory.
+    signal.signal(signal.SIGTERM, lambda *_: sys.exit(1))
     try:
         result = install(args.manifest, args.source, args.destination)
         print(json.dumps({"ok": True, "result": result}))

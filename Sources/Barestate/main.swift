@@ -193,6 +193,15 @@ if let atom = actions.grounders.runningAtom {
   stopped.wait()
   Log.info(.quit, "atom stopped")
 }
+if let installer = controller.installerStopping {
+  let stopped = DispatchSemaphore(value: 0)
+  Task.detached {
+    await installer.value
+    stopped.signal()
+  }
+  stopped.wait()
+  Log.info(.quit, "installer stopped")
+}
 if let closing = store {
   Log.info(.quit, "store closing")
   // The actor finishes what it already accepted before it closes.

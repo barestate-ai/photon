@@ -47,9 +47,9 @@ struct AtomInstallTests {
 
   /// Waits for a condition with a deadline, never a fixed sleep.
   private func until(
-    _ what: String, _ condition: @escaping @Sendable () -> Bool
+    _ what: String, seconds: Int = 5, _ condition: @escaping @Sendable () -> Bool
   ) async throws {
-    let deadline = ContinuousClock.now + .seconds(5)
+    let deadline = ContinuousClock.now + .seconds(seconds)
     while !condition() {
       if ContinuousClock.now >= deadline {
         Issue.record("timed out waiting for \(what)")
@@ -131,6 +131,58 @@ struct AtomInstallTests {
     install.cancel()
     #expect(await outcome == .cancelled)
     try await until("the grandchild to be gone") { Darwin.kill(child!, 0) == -1 && errno == ESRCH }
+  }
+
+  @Test func cancelAndWaitLeavesNoDescendantEvenOneThatIgnoresTerm() async throws {
+    let scratch = try Scratch()
+    let script = try scratch.script(
+      """
+      sleep 60 &
+      echo $! > "$PID_FILE"
+      sh -c 'trap "" TERM; echo $$ > "$STUBBORN_FILE"; exec sleep 60' &
+      until [ -s "$STUBBORN_FILE" ]; do sleep 0.01; done
+      echo "setup-atom: working"
+      wait
+      """)
+    let install = AtomInstall(
+      script: script,
+      environment: [
+        "PID_FILE": "\(scratch.directory.path)/child.pid",
+        "STUBBORN_FILE": "\(scratch.directory.path)/stubborn.pid",
+      ])
+    let lines = Lines()
+    async let outcome = install.run { lines.append($0) }
+    try await until("the script to start") { !lines.all.isEmpty }
+    let children = try ["child.pid", "stubborn.pid"].map { name -> pid_t in
+      try #require(pid_t(scratch.read(name)))
+    }
+    let started = ContinuousClock.now
+    await install.cancelAndWait(timeout: .seconds(1))
+    #expect(ContinuousClock.now - started < .seconds(3))
+    for child in children { #expect(Darwin.kill(child, 0) == -1 && errno == ESRCH) }
+    #expect(await outcome == .cancelled)
+  }
+
+  @Test func cancelEscalatesToSigkillForADescendantThatIgnoresTerm() async throws {
+    let scratch = try Scratch()
+    let script = try scratch.script(
+      """
+      sh -c 'trap "" TERM; echo $$ > "$STUBBORN_FILE"; exec sleep 60' &
+      until [ -s "$STUBBORN_FILE" ]; do sleep 0.01; done
+      echo "setup-atom: working"
+      wait
+      """)
+    let install = AtomInstall(
+      script: script, environment: ["STUBBORN_FILE": "\(scratch.directory.path)/stubborn.pid"])
+    let lines = Lines()
+    async let outcome = install.run { lines.append($0) }
+    try await until("the script to start") { !lines.all.isEmpty }
+    let stubborn = try #require(pid_t(scratch.read("stubborn.pid")))
+    install.cancel()
+    #expect(await outcome == .cancelled)
+    try await until("the stubborn descendant to be killed", seconds: 6) {
+      Darwin.kill(stubborn, 0) == -1 && errno == ESRCH
+    }
   }
 
   @Test func aCancelThatBeatsTheLaunchNeverStartsTheScript() async throws {

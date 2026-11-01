@@ -66,6 +66,8 @@ final class AppController: NSObject, NSApplicationDelegate, NSWindowDelegate {
   var database: @MainActor () -> Store? = { nil }
   private var closing: [Int32: Tab] = [:]
   private(set) var quitting = false
+  /// The Atom installer being stopped by a quit; main waits for it before exiting.
+  private(set) var installerStopping: Task<Void, Never>?
   private let startURL: String
   let testHooks: Bool
 
@@ -274,7 +276,10 @@ final class AppController: NSObject, NSApplicationDelegate, NSWindowDelegate {
     guard !quitting else { return }
     quitting = true
     remote.disable(wait: true)
-    Log.info(.quit, "request reason=\(reason) tabs=\(tabs.count)")
+    installerStopping = settingsWindow?.stopInstaller()
+    Log.info(
+      .quit,
+      "request reason=\(reason) tabs=\(tabs.count) installer=\(installerStopping != nil)")
     for tab in tabs { closeTab(tab.id) }
     if closing.isEmpty {
       Log.info(.quit, "quitting message loop")

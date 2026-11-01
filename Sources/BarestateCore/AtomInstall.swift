@@ -37,10 +37,15 @@ public final class AtomInstall: @unchecked Sendable {
   /// Resolves once the script exits and its output is drained. `onLine` fires on an arbitrary
   /// thread with each display line, in arrival order.
   public func run(onLine: @escaping @Sendable (String) -> Void) async -> Outcome {
-    // A cancel that beat the launch: never start.
-    if lock.withLock({ cancelled }) { return .cancelled }
     do {
-      try process.run()
+      // Launch and the cancel latch share the lock: a cancel either lands first, and nothing
+      // starts, or finds the running tree.
+      let started = try lock.withLock { () throws -> Bool in
+        if cancelled { return false }
+        try process.run()
+        return true
+      }
+      if !started { return .cancelled }
       // The parent never writes; without this close our own write end would keep the pipe
       // open and the line reader would never see EOF.
       try output.fileHandleForWriting.close()
@@ -72,18 +77,53 @@ public final class AtomInstall: @unchecked Sendable {
     }
   }
 
-  /// SIGTERM to the whole tree, children first, so the script's own TERM trap cleans up its temp
-  /// dirs; SIGKILL to the script if it is still around two seconds later.
-  public func cancel() {
-    lock.withLock { cancelled = true }
-    guard process.isRunning else { return }
-    let pid = process.processIdentifier
-    for descendant in Self.tree(rootedAt: pid) { Darwin.kill(descendant, SIGTERM) }
-    Task.detached { [weak self] in
-      try? await Task.sleep(for: .seconds(2))
-      guard let self, self.process.isRunning else { return }
-      Darwin.kill(pid, SIGKILL)
+  /// Latches the cancel and sends SIGTERM to the whole tree, children first, so the script's own
+  /// TERM trap cleans up its temp dirs. The tree is read first and returned: a child outlives its
+  /// parent as an orphan nobody could find afterwards.
+  private func terminate() -> [pid_t] {
+    let tree = lock.withLock { () -> [pid_t] in
+      cancelled = true
+      return process.isRunning ? Self.tree(rootedAt: process.processIdentifier) : []
     }
+    for pid in tree { Darwin.kill(pid, SIGTERM) }
+    return tree
+  }
+
+  /// SIGTERM to the whole tree, then SIGKILL to whatever is left two seconds later.
+  public func cancel() {
+    let tree = terminate()
+    guard !tree.isEmpty else { return }
+    Task.detached {
+      try? await Task.sleep(for: .seconds(2))
+      Self.kill(tree)
+    }
+  }
+
+  /// Cancel for a process about to exit: returns once every process of the tree is gone, SIGKILLing
+  /// whatever ignored the SIGTERM sweep when `timeout` runs out.
+  public func cancelAndWait(timeout: Duration) async {
+    let tree = terminate()
+    await Self.drain(tree, within: timeout)
+    Self.kill(tree)
+    // A killed orphan stays a zombie until launchd reaps it.
+    await Self.drain(tree, within: .milliseconds(500))
+  }
+
+  // ponytail: a pid that exited and was recycled within the grace period would be signalled;
+  // identity checks (pid + start time) if installs ever run with long grace periods.
+  private static func kill(_ tree: [pid_t]) {
+    for pid in tree where isAlive(pid) { Darwin.kill(pid, SIGKILL) }
+  }
+
+  private static func drain(_ tree: [pid_t], within limit: Duration) async {
+    let deadline = ContinuousClock.now + limit
+    while tree.contains(where: isAlive), ContinuousClock.now < deadline {
+      try? await Task.sleep(for: .milliseconds(20))
+    }
+  }
+
+  private static func isAlive(_ pid: pid_t) -> Bool {
+    Darwin.kill(pid, 0) == 0 || errno == EPERM
   }
 
   /// The one line the UI shows for a raw output line, or nil when the line is machine-only.
