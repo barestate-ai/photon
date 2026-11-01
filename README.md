@@ -38,6 +38,12 @@ The command prompts for the key, so it never appears on a command line or in you
 
 Photon looks for the key in this order: `MODEL_API_KEY` in the environment, then in the `.env` file (the one named by `BARESTATE_ENV_FILE`, else `.env` in the working directory), then the Keychain. From a checkout, put `MODEL_API_KEY=...` in `.env` at the repo root (git ignores it).
 
+## Barestate Muse (no key of your own)
+
+The Barestate API at `https://api.barestate.xyz` lets Photon reach Muse without your own key: a small Cloudflare Worker (`server/barestate-api/`) holds the Meta key as a Worker secret and proxies `POST /v1/muse/responses` to Meta unchanged. Devices register once with an invite code (`POST /v1/devices`); the server stores only the SHA-256 of the device token, enforces per-device and global daily USD caps (402 with a clear message when reached), and logs only method, path, status, latency, a token-hash prefix, token counts and cost — never prompts, images, tokens or the key.
+
+For the owner: the three initial invite codes live in the `invites` key of the `barestate-api-kv` KV namespace — read them with `wrangler kv key get --remote --namespace-id b52da027ff9d4afc91acacbd86efa1d5 invites`, add more with `wrangler kv key put --remote` on the same key (a JSON list). Deploys and secret/KV upkeep are `scripts/deploy-api.sh` (idempotent). See D73 in [DECISIONS.md](DECISIONS.md).
+
 ## Atom (optional)
 
 Atom is a small local model that turns "click Save" and a screenshot into a point, before Photon asks Muse. Without it the act ladder skips that step. Apple silicon only; it needs about 1.4 GB of disk (1.2 GB of runtime and 161 MB of model, measured with `du`).

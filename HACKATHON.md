@@ -37,5 +37,6 @@ Each item names the commits' dates and the decision entries. The ids are the one
 | **B12 Remote** | The gateway with bearer auth and pairing, Settings pairing with a one-time QR code, the phone page and its event stream, the Funnel mount | 2026-10-31 | D57 to D61, `docs/muse.md` |
 | **B13 Measurement and release** | The startup, footprint and frontend benches, BENCH.md, the privacy-safe logs, crash capture, the end-to-end suite, `dist/Photon-<version>.zip` | 2026-10-29 to 2026-10-31 | D13, D15, D21, D32, D62 to D64 |
 | **B14 Docs and media** | README, DEMO, this file, the decision log, four screenshots and a 70 s video, all from the running app | 2026-10-31 | D66 |
+| **B15 The Barestate API** | A dependency-free Cloudflare Worker at `https://api.barestate.xyz` holding the Meta key as a Worker secret, with invite-code device registration (SHA-256 token hashes in KV), per-device and global daily USD caps, and a pass-through Muse proxy that never logs content | 2026-11-01 | D73 |
 
 The mission's own fail triggers and their outcomes are in [DECISIONS.md](DECISIONS.md) (D1, D63, D40, D60, D66). Measured figures are only in [BENCH.md](BENCH.md).
