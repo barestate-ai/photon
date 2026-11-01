@@ -205,6 +205,7 @@ extension AppController {
       fields["keyLoop"] = .array(settingsWindow.keyLoop.map { .string($0) })
       fields["focused"] = settingsWindow.focusedLabel.map { .string($0) } ?? .null
       fields["remote"] = settingsWindow.remoteState
+      fields["atom"] = settingsWindow.atomState
     }
     return .object(fields)
   }

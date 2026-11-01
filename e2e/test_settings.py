@@ -53,12 +53,12 @@ class SettingsTests(SettingsCase):
         self.key(",", "cmd")
         settings = self.settings()
         self.assertEqual(settings["windows"], 1)
-        self.assertEqual(settings["sections"], ["Search engine", "Model", "Remote", "Motion"])
+        self.assertEqual(settings["sections"], ["Search engine", "Model", "Atom", "Remote", "Motion"])
         self.assertEqual(settings["selectedEngine"], "DuckDuckGo")
         self.assertNotIn("selectedLayout", settings)
         self.assertNotIn("layout", settings)
         labels = self.labels()
-        for expected in ("DuckDuckGo", "Google", "Bing", "Model status",
+        for expected in ("DuckDuckGo", "Google", "Bing", "Model status", "Atom status",
                          "Enable Remote", "Pair a phone", "Paired devices"):
             self.assertIn(expected, labels)
         for removed in ("Horizontal tabs", "Vertical tabs", "Tab layout", "Sidebar"):

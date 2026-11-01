@@ -21,6 +21,11 @@ REPO="barestate-ai/photon"
 
 die() { echo "setup-atom: $*" >&2; exit 1; }
 
+step() { echo "setup-atom: $*" >&2; } # a short line the Settings window shows as the current step
+
+# Cancel from Settings sends TERM: exit through the EXIT traps so the temp dirs are cleaned up.
+trap 'exit 1' TERM
+
 # The private venv once it exists: a clean Mac has no usable system python3 without developer tools.
 py() {
   if [[ -x "$RUNTIME_DIR/venv/bin/python" ]]; then echo "$RUNTIME_DIR/venv/bin/python"; else echo python3; fi
@@ -49,6 +54,7 @@ verify_directory(Path(sys.argv[2]), json.load(open(sys.argv[1] + "/model-manifes
 }
 
 runtime() {
+  step "Installing the runtime"
   if [[ ! -x "$RUNTIME_DIR/venv/bin/python" ]]; then need_mb "$RUNTIME_DIR" 2500; fi
   BARESTATE_RUNTIME_DIR="$RUNTIME_DIR" "$ATOM/bootstrap.sh"
 }
@@ -71,6 +77,7 @@ fetch() { # <dir>: the public archive URL, falling back to the private GitHub re
 model() {
   if verified; then echo "atom model already installed and verified: $MODEL_DIR" >&2; return; fi
   [[ ! -e "$MODEL_DIR" ]] || die "$MODEL_DIR exists but does not match the manifest; move it away and re-run"
+  step "Installing the model"
   need_mb "$MODEL_DIR" 600
   local archive
   # not local: the EXIT trap runs after this function returns

@@ -17,7 +17,7 @@ final class MotionLedger: NSObject, CAAnimationDelegate {
     case buttonPress, buttonHover, nodePress, nodePickup, nodeDrop
     case rowState, museLabel
     case approvalIn, approvalOut, activityIn, activityOut, stepIn
-    case notice, statusDot, buttonFade
+    case notice, statusDot, buttonFade, atomState
     case qrReveal, phoneChip
     case musePulse, completion, trailFlow, thinkingOrb
 
@@ -34,7 +34,7 @@ final class MotionLedger: NSObject, CAAnimationDelegate {
       case .approvalIn, .approvalOut, .activityIn: "approval-entrance"
       case .activityOut, .stepIn: "panel-fade"
       case .notice: "notice-fade"
-      case .statusDot, .buttonFade: "status-fade"
+      case .statusDot, .buttonFade, .atomState: "status-fade"
       case .trailFlow: "trail-flow"
       case .thinkingOrb: "thinking-orb"
       case .qrReveal: "pairing-reveal"

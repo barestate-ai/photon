@@ -41,6 +41,9 @@ final class SettingsWindow: NSObject, NSWindowDelegate {
   private unowned let controller: AppController
   private var engineButtons: [(engine: SearchEngine, button: NSButton)] = []
   private let modelStatus = NSTextField(labelWithString: "")
+  private let atomStatus = NSTextField(labelWithString: "")
+  private let atomNote = SettingsWindow.noteLabel("")
+  private let atomButton = KeyButton()
   private let content = NSStackView()
   private let remoteToggle = KeyButton()
   private let remoteStatus = SettingsWindow.noteLabel("")
@@ -54,6 +57,19 @@ final class SettingsWindow: NSObject, NSWindowDelegate {
   private(set) var closeCount = 0
   /// How many times an engine was chosen, so a test can tell one keypress from two.
   private(set) var engineChanges = 0
+  /// What the Atom section shows; Ready is the same check the act ladder makes.
+  private enum AtomInstallState: Equatable {
+    case ready, notInstalled, installing
+    case failed(String)
+  }
+  private var atomInstallState: AtomInstallState = .notInstalled {
+    didSet { if oldValue != atomInstallState { applyAtomState(fade: window.isVisible) } }
+  }
+  /// The one installer in flight; while it runs, the Atom button reads Cancel install.
+  private var installer: AtomInstall?
+  /// Counters a test waits on: installs started and progress lines shown.
+  private(set) var atomInstalls = 0
+  private(set) var atomLines = 0
 
   init(controller: AppController) {
     self.controller = controller
@@ -104,6 +120,7 @@ final class SettingsWindow: NSObject, NSWindowDelegate {
       button.state = engine.template == controller.settings.searchEngine ? .on : .off
     }
     modelStatus.stringValue = controller.museOutage == nil ? "Available" : "Unavailable"
+    refreshAtom()
     let remote = controller.remote
     remoteToggle.state = remote.isRequested ? .on : .off
     remoteStatus.stringValue = remote.statusText
@@ -135,6 +152,22 @@ final class SettingsWindow: NSObject, NSWindowDelegate {
 
   var modelStatusText: String { modelStatus.stringValue }
 
+  var atomState: JSON {
+    let state: String
+    switch atomInstallState {
+    case .ready: state = "ready"
+    case .notInstalled: state = "not-installed"
+    case .installing: state = "installing"
+    case .failed: state = "failed"
+    }
+    return [
+      "state": .string(state),
+      "detail": .string(atomNote.isHidden ? "" : atomNote.stringValue),
+      "installs": .number(Double(atomInstalls)),
+      "lines": .number(Double(atomLines)),
+    ]
+  }
+
   /// Labels of the controls Tab visits, in order, starting after the content view, once round.
   var keyLoop: [String] {
     var visited: [NSView] = []
@@ -152,6 +185,7 @@ final class SettingsWindow: NSObject, NSWindowDelegate {
   var controlsById: [String: NSView] {
     var found: [String: NSView] = [
       "settings.remote.enable": remoteToggle, "settings.remote.pair": pairButton,
+      "settings.atom.install": atomButton,
     ]
     for (engine, button) in engineButtons {
       found["settings.engine.\(engine.name.lowercased())"] = button
@@ -183,6 +217,22 @@ final class SettingsWindow: NSObject, NSWindowDelegate {
     modelStatus.setAccessibilityLabel("Model status")
     stack.addArrangedSubview(modelStatus)
     stack.addArrangedSubview(wrappedNote(Self.modelKeyNote))
+
+    section("Atom", in: stack)
+    atomStatus.font = Fonts.manrope(14)
+    atomStatus.textColor = Design.ink
+    atomStatus.wantsLayer = true
+    atomStatus.setAccessibilityLabel("Atom status")
+    stack.addArrangedSubview(atomStatus)
+    atomNote.preferredMaxLayoutWidth = 432
+    atomNote.lineBreakMode = .byWordWrapping
+    atomNote.maximumNumberOfLines = 0
+    stack.addArrangedSubview(atomNote)
+    atomButton.bezelStyle = .rounded
+    atomButton.bezelColor = Design.petrol
+    atomButton.target = self
+    atomButton.action = #selector(atomPressed)
+    stack.addArrangedSubview(atomButton)
 
     section("Remote", in: stack)
     remoteToggle.setButtonType(.switch)
@@ -356,6 +406,107 @@ final class SettingsWindow: NSObject, NSWindowDelegate {
       ])
   }
 
+  // MARK: Atom
+
+  /// Re-resolves while no install runs, so an install or removal done outside this window shows
+  /// correctly on the next open. The same `AtomConfig.resolve` the act ladder uses.
+  private func refreshAtom() {
+    if installer == nil {
+      let installed =
+        AtomConfig.resolve(
+          environment: ProcessInfo.processInfo.environment, home: NSHomeDirectory(),
+          resources: Bundle.main.resourcePath) != nil
+      atomInstallState = installed ? .ready : .notInstalled
+    }
+    applyAtomState(fade: false)
+  }
+
+  private func applyAtomState(fade: Bool) {
+    let status: String
+    let note: String
+    let button: String?
+    switch atomInstallState {
+    case .ready:
+      status = "Ready"
+      note = ""
+      button = nil
+    case .notInstalled:
+      status = "Not installed"
+      note = "Atom grounds clicks on the page before Photon asks Muse. Needs about 1.4 GB of disk."
+      button = "Install Atom"
+    case .installing:
+      status = "Installing"
+      note = atomNote.stringValue.isEmpty ? "Starting the installer" : atomNote.stringValue
+      button = "Cancel install"
+    case .failed(let reason):
+      status = "Installation failed"
+      note = reason
+      button = "Try again"
+    }
+    let changed = atomStatus.stringValue != status
+    atomStatus.stringValue = status
+    atomNote.stringValue = note
+    atomNote.isHidden = note.isEmpty
+    atomButton.isHidden = button == nil
+    if let button {
+      atomButton.attributedTitle = NSAttributedString(
+        string: button, attributes: [.font: Fonts.manrope(14), .foregroundColor: Design.surface])
+      atomButton.setAccessibilityLabel(button)
+    }
+    // A small fade marks a state change while the window is on screen; the progress text that
+    // streams during the install never animates.
+    if fade, changed, let layer = atomStatus.layer {
+      let reduced = MotionLedger.shared.reduced()
+      MotionLedger.shared.start(
+        .atomState, target: "settings-atom",
+        [
+          .init(
+            layer: layer, key: "atom.state",
+            animation: Motion.ease(
+              "opacity", from: 0, to: 1,
+              duration: reduced ? Motion.reducedFade : Motion.fadeSmall))
+        ])
+    }
+    if window.isVisible { fit() }
+  }
+
+  @objc private func atomPressed() {
+    if let installer {
+      installer.cancel()
+      return
+    }
+    let script = Bundle.main.resourcePath.map { "\($0)/atom/setup-atom.sh" }
+    guard let script, FileManager.default.fileExists(atPath: script) else {
+      atomInstallState = .failed("The installer is missing from this app.")
+      return
+    }
+    let runner = AtomInstall(script: script)
+    installer = runner
+    atomInstalls += 1
+    atomLines = 0
+    atomNote.stringValue = ""
+    atomInstallState = .installing
+    Task {
+      let outcome = await runner.run { [weak self] line in
+        Task { @MainActor [weak self] in self?.atomProgress(line) }
+      }
+      installer = nil
+      switch outcome {
+      case .installed: atomInstallState = .ready
+      case .cancelled: atomInstallState = .notInstalled
+      case .failed(let reason): atomInstallState = .failed(reason)
+      }
+      Log.info(.runs, "atom install: \(outcome)")
+    }
+  }
+
+  /// The latest installer line, shown while the install runs; a late line after it ends is dropped.
+  private func atomProgress(_ line: String) {
+    guard case .installing = atomInstallState else { return }
+    atomLines += 1
+    atomNote.stringValue = line
+    fit()
+  }
   // MARK: Actions
 
   @objc private func remoteToggled(_ sender: NSButton) {
