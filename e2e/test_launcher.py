@@ -134,6 +134,12 @@ class LauncherCase(AppCase):
             self.key("ArrowDown")
         self.assertEqual(self.active(), row["id"])
 
+    def click_row(self, row):
+        """A row below the fold is scrolled into view by the arrows first, as a person would."""
+        if not row["visible"]:
+            self.move_to(row)
+        self.call("test.click", {"target": f"launcherRow:{row['id']}"})
+
     def requests(self):
         return len(self.fixtures.log())
 
@@ -271,7 +277,7 @@ class RankingTests(LauncherCase):
                               and self.launcher(), what="empty-query rows")
         save("launcher-empty-rows.json", state["rows"])
         self.assertEqual([(s["title"], len(s["rows"])) for s in state["sections"]],
-                         [("Continue", 3), ("Suggested", 3), ("Browser", 2)])
+                         [("Continue", 3), ("Suggested", 3), ("Browser", 3)])
         rows = state["rows"]
         self.assertEqual({r["title"] for r in rows[:3]},
                          {"Kyoto trip", "Places to stay", "Weekend reading"})
@@ -282,6 +288,7 @@ class RankingTests(LauncherCase):
             (f"Summarize {current}", "Start a task with Muse"),
             ("Compare the pages I have open", "Start a task with Muse"),
             ("Find something on the web", "Web search"),
+            ("Open pages", "Switch to any open page"),
             ("History", "Find a page you visited"),
             ("Settings", "Manage browser preferences")])
         self.assertEqual(state["active"], rows[0]["id"])
@@ -301,7 +308,7 @@ class RankingTests(LauncherCase):
         self.open_launcher()
         state = bs.wait_until(lambda: self.launcher()["current"] and self.launcher(), what="rows")
         self.assertEqual([r["title"] for r in state["rows"] if r["kind"] != "run"],
-                         ["Find something on the web", "History", "Settings"])
+                         ["Find something on the web", "Open pages", "History", "Settings"])
         self.close_launcher()
         self.seed(tabs=("Solo page",))
         self.open_launcher()
@@ -309,7 +316,7 @@ class RankingTests(LauncherCase):
             lambda: self.launcher()["current"] and self.launcher(), what="rows")["rows"]
             if r["kind"] != "run"]
         self.assertEqual(titles, ["Solo page", "Summarize Solo page", "Find something on the web",
-                                  "History", "Settings"])
+                                  "Open pages", "History", "Settings"])
         self.close_launcher()
         self.seed(tabs=("Second page",))
         self.open_launcher()
@@ -368,7 +375,7 @@ class RankingTests(LauncherCase):
         self.open_launcher()
         bs.wait_until(lambda: self.launcher()["current"], what="rows")
         row = next(r for r in self.launcher()["rows"] if r["title"] == "History")
-        self.call("test.click", {"target": f"launcherRow:{row['id']}"})
+        self.click_row(row)
         state = bs.wait_until(lambda: (lambda s: s if s["open"] and s["scope"] == "history"
                                        and s["current"] else None)(self.launcher()), what="history")
         self.assertEqual((state["fieldText"], state["placeholder"]), ("", "Search your history"))
@@ -386,7 +393,7 @@ class RankingTests(LauncherCase):
         self.open_launcher()
         bs.wait_until(lambda: self.launcher()["current"], what="rows")
         row = next(r for r in self.launcher()["rows"] if r["title"] == "History")
-        self.call("test.click", {"target": f"launcherRow:{row['id']}"})
+        self.click_row(row)
         bs.wait_until(lambda: self.launcher()["scope"] == "history", what="history")
         self.key("Escape")
         bs.wait_until(lambda: not self.launcher()["open"], what="closed by one Escape")
@@ -834,6 +841,7 @@ class EmptyStateTests(LauncherCase):
         state = bs.wait_until(lambda: self.launcher()["current"] and self.launcher(), what="rows")
         self.assertEqual(self.signature(), [
             ("findWeb", "Find something on the web", "Web search", "Search the web"),
+            ("command", "Open pages", "Switch to any open page", "Open pages"),
             ("command", "History", "Find a page you visited", "History"),
             ("command", "Settings", "Manage browser preferences", "Settings")])
         self.assertEqual(state["active"], state["rows"][0]["id"])

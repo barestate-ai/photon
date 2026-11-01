@@ -225,6 +225,7 @@ extension AppController {
     case .forward: goForward()
     case .reload: reloadPage()
     case .history: launcher.showScope(.history)
+    case .openPages: launcher.showScope(.pages)
     case .settings: showSettings()
     case .find: showFind()
     case .closePage: activeTabId.map(closeByPerson)

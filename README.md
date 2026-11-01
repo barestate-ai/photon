@@ -81,6 +81,7 @@ scripts/release.sh          # dist/Photon-0.1.0.zip (make dist does the same)
 
 - **Overview canvas.** Every open page is a card with its own captured preview. Pan and zoom the canvas. Links and popups connect pages into a trail. Muse's own steps draw in copper.
 - **⌘T.** One launcher for URLs, web search, switching tabs, and requests for Muse, with local suggestions.
+- **Switching pages.** With many pages open, press ⌘T (or click the ⌘T button) and choose **Open pages** under Browser. It lists every open page, most recent first, by title and host. Type to filter by title or address, use ↑ ↓ and Return or click a row, and that page fills the window without reloading. Choosing the page you are already on from the overview does the same. Esc leaves everything as it was.
 
   ![⌘T suggestions](docs/screenshots/suggestions.png)
 

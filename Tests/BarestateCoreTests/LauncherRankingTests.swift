@@ -49,13 +49,15 @@ struct LauncherRankingTests {
         "Continue: Kyoto hotel comparison | Kyoto map | Trip notes",
         "Suggested: Summarize Kyoto hotel comparison | Compare the pages I have open"
           + " | Find something on the web",
-        "Browser: History | Settings",
+        "Browser: Open pages | History | Settings",
       ])
     #expect(rows.prefix(3).allSatisfy { $0.subtitle == "Switch to open page" })
     #expect(rows[3...4].allSatisfy { $0.subtitle == "Start a task with Muse" })
     #expect(rows[5].subtitle == "Web search")
     #expect(
-      rows.map(\.subtitle).suffix(2) == ["Find a page you visited", "Manage browser preferences"])
+      rows.map(\.subtitle).suffix(3) == [
+        "Switch to any open page", "Find a page you visited", "Manage browser preferences",
+      ])
   }
 
   @Test func suggestionsOwnTheirPage() {
@@ -80,10 +82,13 @@ struct LauncherRankingTests {
     #expect(
       shape(one) == [
         "Continue: Only", "Suggested: Summarize Only | Find something on the web",
-        "Browser: History | Settings",
+        "Browser: Open pages | History | Settings",
       ])
     let none = rank("", snapshot(tabs: [("New tab", "about:blank")]))
-    #expect(shape(none) == ["Suggested: Find something on the web", "Browser: History | Settings"])
+    #expect(
+      shape(none) == [
+        "Suggested: Find something on the web", "Browser: Open pages | History | Settings",
+      ])
   }
 
   @Test func theSameInputGivesTheSameRowsAndNoRowIsATaskWithoutAnExplicitCommit() {
@@ -273,6 +278,52 @@ struct LauncherRankingTests {
     #expect(all.map(\.subtitle) == ["news.example.com", "kyoto.example.org", "kyoto.example.net"])
     #expect(rank("kyoto", data, scope: .history).map(\.title) == ["Kyoto guide", "Kyoto food"])
     #expect(rank("zzz", data, scope: .history).isEmpty)
+  }
+
+  // MARK: Open pages scope
+
+  private func pages(_ count: Int) -> [(String, String)] {
+    (1...count).map { ("Page \($0)", "http://a.test/p\($0).html") }
+  }
+
+  @Test func pagesScopeListsEveryNonBlankPageInRecencyOrderWithItsHost() {
+    let data = snapshot(
+      tabs: pages(7) + [("New tab", "about:blank")],
+      history: [("https://old.example.com/", "Old")], bookmarks: [("https://m.example.com/", "M")])
+    let rows = rank("", data, scope: .pages)
+    #expect(rows.map(\.title) == (1...7).map { "Page \($0)" })
+    #expect(rows.allSatisfy { $0.kind == .switchTab && $0.section == "Open pages" })
+    #expect(rows.allSatisfy { $0.subtitle == "a.test" })
+    #expect(rows.map(\.target) == (1...7).map { "t\($0)" })
+    #expect(rank("", snapshot(tabs: [("New tab", "about:blank")]), scope: .pages).isEmpty)
+  }
+
+  @Test func pagesScopeIsNotCappedLikeContinueOrRelatedPages() {
+    let data = snapshot(tabs: pages(60))
+    #expect(rank("", data, scope: .pages).count == 60)
+    #expect(rank("page", data, scope: .pages).count == 60)
+  }
+
+  @Test func pagesScopeFiltersByTitleOrAddressIgnoringCaseAndNeverAsksTheNetwork() {
+    let data = snapshot(tabs: [
+      ("Kyoto trip", "http://a.test/alpha.html"), ("Places to stay", "http://a.test/beta.html"),
+      ("Weekend reading", "http://a.test/gamma.html"),
+    ])
+    #expect(rank("KYOTO", data, scope: .pages).map(\.title) == ["Kyoto trip"])
+    #expect(rank("beta", data, scope: .pages).map(\.title) == ["Places to stay"])
+    #expect(rank("a.test", data, scope: .pages).count == 3)
+    #expect(rank("stay beta", data, scope: .pages).map(\.title) == ["Places to stay"])
+    #expect(rank("zzz", data, scope: .pages).isEmpty)
+    #expect(rank("kyoto", data, scope: .pages).allSatisfy { $0.kind == .switchTab })
+  }
+
+  @Test func aBlankQueryInThePagesScopeListsEveryPageAndTheEntryIsFoundByName() {
+    let data = snapshot(tabs: pages(3))
+    #expect(rank("  ", data, scope: .pages).count == 3)
+    for word in ["open pages", "switch"] {
+      let entry = rank(word, data).first { $0.id == "command:openPages" }
+      #expect(entry?.title == "Open pages", "\(word)")
+    }
   }
 
   @Test func webScopeOffersOnlyTheSearch() {

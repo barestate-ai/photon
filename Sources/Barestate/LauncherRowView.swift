@@ -207,6 +207,7 @@ final class LauncherRowView: NSView {
     case .forward: "chevron.right"
     case .reload: "arrow.clockwise"
     case .history: "clock"
+    case .openPages: "square.on.square"
     case .settings: "slider.horizontal.3"
     case .showOverview: "square.grid.2x2"
     case .focusPage: "rectangle"

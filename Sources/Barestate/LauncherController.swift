@@ -79,7 +79,7 @@ final class LauncherController {
     if storeDirty { Task { await reload() } }
   }
 
-  /// Opens the launcher on a scope of its own with an empty field: History or web search.
+  /// Opens the launcher on a scope of its own with an empty field: History, open pages or web search.
   func showScope(_ scope: LauncherScope) {
     open()
     guard let view, isOpen else { return }
@@ -299,6 +299,7 @@ final class LauncherController {
     case .startTask where app.museOutage != nil: return showUnavailable()
     case .findWeb: return showScope(.web)
     case .command where row.target == BrowserCommand.history.rawValue: return showScope(.history)
+    case .command where row.target == BrowserCommand.openPages.rawValue: return showScope(.pages)
     default: break
     }
     Log.info(.launcher, "commit kind=\(row.kind)")

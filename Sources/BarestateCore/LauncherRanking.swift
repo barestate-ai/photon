@@ -52,9 +52,9 @@ public struct LauncherSnapshot: Sendable {
   }
 }
 
-/// What the launcher is searching: everything, only visited pages, or only the web.
+/// What the launcher is searching: everything, only visited pages, the open pages, or only the web.
 public enum LauncherScope: String, Sendable {
-  case all, history, web
+  case all, history, pages, web
 }
 
 public struct LauncherRow: Sendable, Equatable {
@@ -132,6 +132,8 @@ public enum LauncherRanking {
           ? emptyRows(snapshot) : typedRows(text, snapshot))
     case .history:
       rows = historyRows(text, snapshot)
+    case .pages:
+      rows = pageRows(text, snapshot)
     case .web:
       rows = text.isEmpty ? [] : [searchRow(text)]
     }
@@ -194,7 +196,7 @@ public enum LauncherRanking {
       LauncherRow(
         section: "Suggested", kind: .findWeb, title: "Find something on the web",
         subtitle: "Web search", actionLabel: "Search the web", target: ""))
-    rows += [commandRow(.history, context), commandRow(.settings, context)]
+    rows += [.openPages, .history, .settings].map { commandRow($0, context) }
     if context.phoneConnected { rows.append(commandRow(.disconnectPhone, context)) }
     return rows
   }
@@ -251,6 +253,21 @@ public enum LauncherRanking {
     }
     return sites.map {
       var row = siteRow($0, section: "History", kind: .history)
+      row.subtitle = host(of: $0.url)
+      return row
+    }
+  }
+
+  /// Every open page, most recent first, filtered by every typed word. Unlike Continue and
+  /// Related open pages it has no cap: the list scrolls.
+  private static func pageRows(_ text: String, _ snapshot: LauncherSnapshot) -> [LauncherRow] {
+    let open = openPages(snapshot)
+    let tokens = text.lowercased().split(whereSeparator: \.isWhitespace).map(String.init)
+    let pages =
+      text.isEmpty
+      ? open : best(open, tokens, limit: .max) { ($0.title.lowercased(), $0.url.lowercased()) }
+    return pages.map {
+      var row = tabRow($0, section: "Open pages")
       row.subtitle = host(of: $0.url)
       return row
     }

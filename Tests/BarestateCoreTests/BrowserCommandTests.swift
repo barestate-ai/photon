@@ -12,7 +12,9 @@ struct BrowserCommandTests {
     return command.availability(in: context)
   }
 
-  @Test func historyAndSettingsAlwaysRun() {
+  @Test func historyOpenPagesAndSettingsAlwaysRun() {
+    #expect(availability(.openPages) == .enabled)
+    #expect(BrowserCommand.openPages.title(in: .init()) == "Open pages")
     #expect(availability(.history) == .enabled)
     #expect(availability(.settings) == .enabled)
   }

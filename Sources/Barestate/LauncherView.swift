@@ -146,6 +146,7 @@ final class LauncherView: NSView, NSTextFieldDelegate {
       switch scope {
       case .all: "Search, visit a website, or start a task"
       case .history: "Search your history"
+      case .pages: "Search your open pages"
       case .web: "Search the web"
       }
     field.placeholderAttributedString = NSAttributedString(

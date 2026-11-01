@@ -2,7 +2,7 @@
 /// each case through one function, and `availability` is the only place that decides whether it
 /// can run right now and why not.
 public enum BrowserCommand: String, CaseIterable, Sendable {
-  case back, forward, reload, history, settings
+  case back, forward, reload, history, openPages, settings
   case showOverview, focusPage, zoomIn, zoomOut, zoomToFit
   case find, closePage, reopenClosed
   case stopRun, showRunActivity
@@ -43,6 +43,7 @@ public enum BrowserCommand: String, CaseIterable, Sendable {
     case .forward: "Forward"
     case .reload: "Reload page"
     case .history: "History"
+    case .openPages: "Open pages"
     case .settings: "Settings"
     case .showOverview: "Show overview"
     case .focusPage: "Show page"
@@ -64,6 +65,7 @@ public enum BrowserCommand: String, CaseIterable, Sendable {
     case .forward: "Go to the next page"
     case .reload: "Load this page again"
     case .history: "Find a page you visited"
+    case .openPages: "Switch to any open page"
     case .settings: "Manage browser preferences"
     case .showOverview: "See all your pages"
     case .focusPage: "Return to the current page"
@@ -85,6 +87,7 @@ public enum BrowserCommand: String, CaseIterable, Sendable {
     case .back: "previous"
     case .reload: "refresh"
     case .history: "visited"
+    case .openPages: "tabs switch"
     case .settings: "preferences options"
     case .find: "search"
     case .closePage: "tab"
@@ -99,7 +102,7 @@ public enum BrowserCommand: String, CaseIterable, Sendable {
 
   public func availability(in context: Context) -> Availability {
     switch self {
-    case .history, .settings:
+    case .history, .openPages, .settings:
       return .enabled
     case .back:
       return context.canGoBack ? .enabled : .disabled("There is no earlier page to go back to")
