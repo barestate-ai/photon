@@ -284,18 +284,49 @@ test('the per-device daily cap answers 402 before any upstream call', async () =
   assert.equal(fetchCalls.length, 0);
 });
 
-test('a streaming upstream response passes through without spend accounting', async () => {
+test('stream:true gets 400 before any upstream call and records nothing', async () => {
   await kv.put('invites', JSON.stringify(['code-1']));
   const token = (await (await registerDevice()).json()).device_token;
-  const stream = new ReadableStream({
-    start(c) { c.enqueue(new TextEncoder().encode('data: {}\n\n')); c.close(); },
-  });
-  fetchImpl = () => new Response(stream, {
-    status: 200, headers: { 'content-type': 'text/event-stream', 'x-request-id': 'req-sse' },
-  });
-  const res = await museCall(token, { model: 'muse-spark-1.3', input: 'hi', stream: true });
+  for (const stream of [true, 'true', 1]) {
+    const res = await museCall(token, { model: 'muse-spark-1.3', input: 'hi', stream });
+    assert.equal(res.status, 400);
+    assert.deepEqual(await res.json(), { error: 'streaming is not supported' });
+  }
+  assert.equal(fetchCalls.length, 0);
+  assert.equal(await kv.get(`usage/${day}`), null);
+});
+
+test('stream:false is a normal call', async () => {
+  await kv.put('invites', JSON.stringify(['code-1']));
+  const token = (await (await registerDevice()).json()).device_token;
+  fetchImpl = () => upstreamOk();
+  const res = await museCall(token, { model: 'muse-spark-1.3', input: 'hi', stream: false });
   assert.equal(res.status, 200);
-  assert.equal(res.headers.get('content-type'), 'text/event-stream');
-  assert.equal(await res.text(), 'data: {}\n\n');
-  assert.equal(ctx.promises.length, 0);
+  assert.equal(fetchCalls.length, 1);
+});
+
+test('an upstream 2xx that is not JSON answers 502 and never passes the body through', async () => {
+  await kv.put('invites', JSON.stringify(['code-1']));
+  const token = (await (await registerDevice()).json()).device_token;
+  fetchImpl = () => new Response('data: {"leak":true}\n\n', {
+    status: 200, headers: { 'content-type': 'text/event-stream' },
+  });
+  const res = await museCall(token, { model: 'muse-spark-1.3', input: 'hi' });
+  assert.equal(res.status, 502);
+  assert.match((await res.json()).error.message, /unexpected/i);
+  assert.equal(await kv.get(`usage/${day}`), null);
+});
+
+test('look-alike JSON content types and non-object bodies are refused', async () => {
+  await kv.put('invites', JSON.stringify(['code-1']));
+  const token = (await (await registerDevice()).json()).device_token;
+  for (const ct of ['application/jsonx', 'text/event-stream; profile="application/json"']) {
+    fetchImpl = () => new Response('data: {}\n\n', { status: 200, headers: { 'content-type': ct } });
+    assert.equal((await museCall(token, { model: 'muse-spark-1.3', input: 'hi' })).status, 502);
+  }
+  fetchImpl = () => upstreamOk();
+  assert.equal((await museCall(token, 'null')).status, 400);
+  assert.equal((await museCall(token, '[]')).status, 400);
+  assert.equal(fetchCalls.length, 2);
+  assert.equal(await kv.get(`usage/${day}`), null);
 });

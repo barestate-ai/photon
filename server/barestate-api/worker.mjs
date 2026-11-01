@@ -104,6 +104,11 @@ async function museResponses(request, env, ctx, log) {
   } catch {
     return json(400, { error: { message: 'The body must be a Responses API JSON object.' } });
   }
+  if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) {
+    return json(400, { error: { message: 'The body must be a Responses API JSON object.' } });
+  }
+  // Streamed bodies cannot be priced from usage, so they would bypass the daily caps.
+  if (parsed.stream) return json(400, { error: 'streaming is not supported' });
   const allowed = (env.ALLOWED_MODELS || 'muse-spark-1.3').split(',');
   if (!allowed.includes(parsed.model)) {
     return json(400, { error: { message: `Model must be one of: ${allowed.join(', ')}.` } });
@@ -145,28 +150,29 @@ async function museResponses(request, env, ctx, log) {
   const reqId = upstream.headers.get('x-request-id');
   if (reqId) outHeaders.set('x-request-id', reqId);
 
-  if (upstream.ok && ct && ct.includes('application/json')) {
-    const text = await upstream.text();
-    try {
-      const u = JSON.parse(text).usage || {};
-      const input = num(u.input_tokens, 0);
-      const output = num(u.output_tokens, 0);
-      const cached = num(u.input_tokens_details && u.input_tokens_details.cached_tokens, 0);
-      const usd = micro(((input - cached) * RATE.input + cached * RATE.cached + output * RATE.output) / 1e6);
-      log.in = input;
-      log.out = output;
-      log.usd = usd;
-      // ponytail: KV read-modify-write is a soft cap — a burst can overshoot a little;
-      // Durable Objects would make it exact if the volume ever matters.
-      ctx.waitUntil((async () => {
-        await env.STATE.put(globalKey, JSON.stringify({ usd: micro(globalUsage.usd + usd), calls: globalUsage.calls + 1 }));
-        await env.STATE.put(deviceKey, JSON.stringify({ usd: micro(deviceUsage.usd + usd), calls: deviceUsage.calls + 1 }));
-      })());
-    } catch { /* usage unreadable; the successful call still goes through */ }
-    return new Response(text, { status: upstream.status, headers: outHeaders });
+  if (!upstream.ok) return new Response(upstream.body, { status: upstream.status, headers: outHeaders });
+  if ((ct || '').split(';', 1)[0].trim().toLowerCase() !== 'application/json') {
+    await upstream.body?.cancel();
+    return json(502, { error: { message: 'Muse answered in an unexpected format. Try again.' } });
   }
-  // Error (429/5xx) and streaming responses pass through untouched.
-  return new Response(upstream.body, { status: upstream.status, headers: outHeaders });
+  const text = await upstream.text();
+  try {
+    const u = JSON.parse(text).usage || {};
+    const input = num(u.input_tokens, 0);
+    const output = num(u.output_tokens, 0);
+    const cached = num(u.input_tokens_details && u.input_tokens_details.cached_tokens, 0);
+    const usd = micro(((input - cached) * RATE.input + cached * RATE.cached + output * RATE.output) / 1e6);
+    log.in = input;
+    log.out = output;
+    log.usd = usd;
+    // ponytail: KV read-modify-write is a soft cap — a burst can overshoot a little;
+    // Durable Objects would make it exact if the volume ever matters.
+    ctx.waitUntil((async () => {
+      await env.STATE.put(globalKey, JSON.stringify({ usd: micro(globalUsage.usd + usd), calls: globalUsage.calls + 1 }));
+      await env.STATE.put(deviceKey, JSON.stringify({ usd: micro(deviceUsage.usd + usd), calls: deviceUsage.calls + 1 }));
+    })());
+  } catch { /* usage unreadable; the successful call still goes through */ }
+  return new Response(text, { status: upstream.status, headers: outHeaders });
 }
 
 export default {
