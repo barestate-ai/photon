@@ -12,6 +12,8 @@ public struct DataDir: Equatable, Sendable {
   public var logs: String { root + "/logs" }
   public var spend: String { root + "/spend.json" }
   public var pairing: String { root + "/pairing.json" }
+  /// The Barestate Muse device token under --test-hooks (normal use: the Keychain, D74).
+  public var deviceToken: String { root + "/device-token" }
 }
 
 public struct LaunchOptions: Equatable, Sendable {

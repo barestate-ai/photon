@@ -41,6 +41,15 @@ final class SettingsWindow: NSObject, NSWindowDelegate {
   private unowned let controller: AppController
   private var engineButtons: [(engine: SearchEngine, button: NSButton)] = []
   private let modelStatus = NSTextField(labelWithString: "")
+  private let museTitle = NSTextField(labelWithString: "")
+  private let museNote = SettingsWindow.noteLabel("")
+  private let inviteField = NSTextField()
+  private let museButton = KeyButton()
+  private let museError = SettingsWindow.noteLabel("")
+  /// While a connect call is out; the error line lives until the next attempt or a reopen.
+  private var museConnecting = false
+  /// How many connects were attempted, so a test can tell one click from two.
+  private(set) var museConnects = 0
   private let atomStatus = NSTextField(labelWithString: "")
   private let atomNote = SettingsWindow.noteLabel("")
   private let atomButton = KeyButton()
@@ -107,6 +116,7 @@ final class SettingsWindow: NSObject, NSWindowDelegate {
   var isFront: Bool { window.isVisible && window.isKeyWindow }
 
   func show() {
+    museError.stringValue = ""  // a failed attempt's line does not outlive the window
     refresh()
     if !window.isVisible { window.center() }
     // An inactive app never makes the window key, and the next ⌘W would then miss it.
@@ -119,7 +129,7 @@ final class SettingsWindow: NSObject, NSWindowDelegate {
     for (engine, button) in engineButtons {
       button.state = engine.template == controller.settings.searchEngine ? .on : .off
     }
-    modelStatus.stringValue = controller.museOutage == nil ? "Available" : "Unavailable"
+    applyMuse(fade: false)  // sets the Model row's status too
     refreshAtom()
     let remote = controller.remote
     remoteToggle.state = remote.isRequested ? .on : .off
@@ -179,13 +189,20 @@ final class SettingsWindow: NSObject, NSWindowDelegate {
     return visited.map { $0.accessibilityLabel() ?? "" }
   }
 
-  var focusedLabel: String? { (window.firstResponder as? NSView)?.accessibilityLabel() }
+  /// A focused text field answers through its field editor, which carries no label of its own.
+  var focusedLabel: String? {
+    if let view = window.firstResponder as? NSView, let label = view.accessibilityLabel() {
+      return label
+    }
+    return ((window.firstResponder as? NSTextView)?.delegate as? NSView)?.accessibilityLabel()
+  }
 
   /// Settings controls by the ids test hooks click.
   var controlsById: [String: NSView] {
     var found: [String: NSView] = [
       "settings.remote.enable": remoteToggle, "settings.remote.pair": pairButton,
       "settings.atom.install": atomButton,
+      "settings.muse.invite": inviteField, "settings.muse.connect": museButton,
     ]
     for (engine, button) in engineButtons {
       found["settings.engine.\(engine.name.lowercased())"] = button
@@ -217,6 +234,32 @@ final class SettingsWindow: NSObject, NSWindowDelegate {
     modelStatus.setAccessibilityLabel("Model status")
     stack.addArrangedSubview(modelStatus)
     stack.addArrangedSubview(wrappedNote(Self.modelKeyNote))
+    // Barestate Muse (D74): offered only when no key of the user's own resolves.
+    museTitle.font = Fonts.manrope(14, weight: 500)
+    museTitle.textColor = Design.ink
+    museTitle.wantsLayer = true
+    stack.addArrangedSubview(museTitle)
+    museNote.preferredMaxLayoutWidth = 432
+    museNote.lineBreakMode = .byWordWrapping
+    museNote.maximumNumberOfLines = 0
+    stack.addArrangedSubview(museNote)
+    inviteField.placeholderString = "Invite code"
+    inviteField.font = Fonts.manrope(14)
+    inviteField.setAccessibilityLabel("Invite code")
+    inviteField.widthAnchor.constraint(equalToConstant: 200).isActive = true
+    museButton.bezelStyle = .rounded
+    museButton.bezelColor = Design.petrol
+    museButton.target = self
+    museButton.action = #selector(musePressed)
+    let connectRow = NSStackView(views: [inviteField, museButton])
+    connectRow.orientation = .horizontal
+    connectRow.spacing = 8
+    connectRow.alignment = .centerY
+    stack.addArrangedSubview(connectRow)
+    museError.preferredMaxLayoutWidth = 432
+    museError.lineBreakMode = .byWordWrapping
+    museError.maximumNumberOfLines = 0
+    stack.addArrangedSubview(museError)
 
     section("Atom", in: stack)
     atomStatus.font = Fonts.manrope(14)
@@ -507,6 +550,108 @@ final class SettingsWindow: NSObject, NSWindowDelegate {
     atomNote.stringValue = line
     fit()
   }
+
+  // MARK: Barestate Muse
+
+  /// Offered only when no key of the user's own resolves (D74): an invite code field and
+  /// Connect, or Connected and Disconnect once this Mac holds a device token.
+  /// `animateAnyway`: the caller knows the state just flipped even when an intermediate
+  /// refresh (a connect's latch-clearing probe repaints Settings) already set the title.
+  private func applyMuse(fade: Bool, animateAnyway: Bool = false) {
+    // A token arriving or leaving flips Muse's availability; the row above reads it fresh.
+    modelStatus.stringValue = controller.museOutage == nil ? "Available" : "Unavailable"
+    let offered = !controller.ownModelKey
+    let connected = controller.barestateMuseConnected
+    let title: String
+    let note: String
+    let button: String?
+    if !offered {
+      title = ""
+      note = ""
+      button = nil
+    } else if connected {
+      title = "Barestate Muse"
+      note = "This Mac is connected. Muse calls go through the Barestate API."
+      button = "Disconnect"
+    } else {
+      title = "Use Barestate Muse"
+      note =
+        museConnecting
+        ? "Connecting…"
+        : "No key of your own? Enter an invite code to use Muse through the Barestate API."
+      button = "Connect"
+    }
+    let changed = museTitle.stringValue != title
+    museTitle.stringValue = title
+    museTitle.isHidden = title.isEmpty
+    museNote.stringValue = note
+    museNote.isHidden = note.isEmpty
+    inviteField.isHidden = !offered || connected
+    inviteField.isEnabled = !museConnecting
+    museButton.isHidden = button == nil
+    museButton.isEnabled = !museConnecting
+    if let button {
+      museButton.attributedTitle = NSAttributedString(
+        string: button, attributes: [.font: Fonts.manrope(14), .foregroundColor: Design.surface])
+      museButton.setAccessibilityLabel(button)
+    }
+    museError.isHidden = museError.stringValue.isEmpty || !offered || connected
+    // The same small status fade the Atom section uses for a state change (status-fade).
+    if fade, changed || animateAnyway, !title.isEmpty, let layer = museTitle.layer {
+      let reduced = MotionLedger.shared.reduced()
+      MotionLedger.shared.start(
+        .museState, target: "settings-muse",
+        [
+          .init(
+            layer: layer, key: "muse.state",
+            animation: Motion.ease(
+              "opacity", from: 0, to: 1,
+              duration: reduced ? Motion.reducedFade : Motion.fadeSmall))
+        ])
+    }
+    if window.isVisible { fit() }
+  }
+
+  /// What `test.ui` reports for the Muse section.
+  var museState: JSON {
+    [
+      "offered": .bool(!controller.ownModelKey),
+      "connected": .bool(controller.barestateMuseConnected),
+      "connecting": .bool(museConnecting),
+      "error": .string(museError.isHidden ? "" : museError.stringValue),
+      "connects": .number(Double(museConnects)),
+    ]
+  }
+
+  @objc private func musePressed() {
+    if controller.barestateMuseConnected {
+      controller.disconnectBarestateMuse()
+      museError.stringValue = ""
+      applyMuse(fade: window.isVisible)
+      return
+    }
+    let code = inviteField.stringValue.trimmingCharacters(in: .whitespacesAndNewlines)
+    guard !code.isEmpty else {
+      museError.stringValue = "Enter an invite code."
+      applyMuse(fade: false)
+      return
+    }
+    museConnecting = true
+    museConnects += 1
+    museError.stringValue = ""
+    applyMuse(fade: false)
+    Task {
+      let error = await controller.connectBarestateMuse(inviteCode: code)
+      museConnecting = false
+      if let error {
+        museError.stringValue = error
+      } else {
+        inviteField.stringValue = ""
+      }
+      applyMuse(fade: window.isVisible, animateAnyway: error == nil)
+    }
+  }
+
   // MARK: Actions
 
   @objc private func remoteToggled(_ sender: NSButton) {

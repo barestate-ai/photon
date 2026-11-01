@@ -65,8 +65,13 @@ class SettingsTests(SettingsCase):
             self.assertNotIn(removed, labels)
         self.assertTrue(any("Reduce Motion" in (label or "") for label in labels))
         self.assertTrue(any("Keychain item meta-model-api" in (label or "") for label in labels))
-        self.assertFalse(any("Barestate" in (label or "") or "sidebar" in (label or "")
-                             for label in labels))
+        self.assertFalse(any("sidebar" in (label or "").lower() for label in labels))
+        # Barestate Muse is offered only when no key of the user's own resolves (D74).
+        if settings["muse"]["offered"]:
+            for expected in ("Use Barestate Muse", "Invite code", "Connect"):
+                self.assertIn(expected, labels)
+        else:
+            self.assertNotIn("Use Barestate Muse", labels)
         self.call("test.screenshot", {"path": os.path.join(LOG_DIR, "settings.png"), "window": "settings"})
         self.close_settings()
 
@@ -332,7 +337,14 @@ class RemoteLifetimeTests(unittest.TestCase):
 
 
 class SettingsKeyboardTests(SettingsCase):
-    ACTIONABLE = ["DuckDuckGo", "Google", "Bing", "Enable Remote"]
+    RADIOS = ["DuckDuckGo", "Google", "Bing"]
+
+    def actionable(self):
+        """The key loop: the Muse invite field and Connect ride along when offered (D74)."""
+        loop = list(self.RADIOS)
+        if self.settings()["muse"]["offered"]:
+            loop += ["Invite code", "Connect"]
+        return loop + ["Enable Remote"]
 
     def press(self, key, *modifiers):
         self.call("test.key", {"key": key, "modifiers": list(modifiers), "window": "settings"})
@@ -352,10 +364,13 @@ class SettingsKeyboardTests(SettingsCase):
         nodes = list(flatten(self.call("test.ax", {"window": "settings"})))
         self.assertEqual([n["label"] for n in nodes if n.get("role") == "AXUnknown"], [])
         by_label = {n["label"]: n for n in nodes if "label" in n}
-        for label in self.ACTIONABLE:
-            role = "AXCheckBox" if label == "Enable Remote" else "AXRadioButton"
+        for label in self.actionable():
+            role = ("AXCheckBox" if label == "Enable Remote"
+                    else "AXTextField" if label == "Invite code"
+                    else "AXButton" if label in ("Connect", "Disconnect") else "AXRadioButton")
             self.assertEqual(by_label[label]["role"], role, label)
-            self.assertIn("AXPress", by_label[label]["actions"], label)
+            if role != "AXTextField":
+                self.assertIn("AXPress", by_label[label]["actions"], label)
         self.assertEqual(by_label["Pair a phone"]["role"], "AXButton")
         self.close_settings()
 
@@ -367,15 +382,16 @@ class SettingsKeyboardTests(SettingsCase):
         orders = {}
         for scale in (1.0, 1.5, 2.0):
             self.call("test.textScale", {"scale": scale})
-            self.assertEqual(self.settings()["keyLoop"], self.ACTIONABLE, scale)
+            actionable = self.actionable()
+            self.assertEqual(self.settings()["keyLoop"], actionable, scale)
             forward = []
-            for _ in self.ACTIONABLE:
+            for _ in actionable:
                 self.press("Tab")
                 forward.append(self.focused())
             start = forward[-1]
             self.assertEqual(forward, self.walk_from(start, 1), scale)
             backward = []
-            for _ in self.ACTIONABLE:
+            for _ in actionable:
                 self.press("Tab", "shift")
                 backward.append(self.focused())
             self.assertEqual(backward, self.walk_from(start, -1), scale)
@@ -387,7 +403,7 @@ class SettingsKeyboardTests(SettingsCase):
         """VAL-CROSS-007"""
         self.open_settings()
         before = self.settings()["engineChanges"]
-        for _ in self.ACTIONABLE:
+        for _ in self.actionable():
             if self.focused() == "Google":
                 break
             self.press("Tab")

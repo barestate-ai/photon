@@ -51,10 +51,11 @@ private func ledgerPath() -> String {
 
 private func client(
   _ wire: Wire, environment: [String: String] = ["MODEL_API_KEY": key], envFile: String? = nil,
-  keychain: @escaping @Sendable () -> String? = { nil }, ledger: String = ledgerPath()
+  keychain: @escaping @Sendable () -> String? = { nil },
+  deviceToken: @escaping @Sendable () -> String? = { nil }, ledger: String = ledgerPath()
 ) -> ModelClient {
   ModelClient(
-    environment: environment, envFile: envFile, keychain: keychain,
+    environment: environment, envFile: envFile, keychain: keychain, deviceToken: deviceToken,
     ledger: SpendLedger(path: ledger), transport: wire.transport)
 }
 
@@ -243,6 +244,56 @@ struct ModelClientTests {
     wire.reply = { _ in (200, metaReply) }
     _ = try await client(wire, environment: [:], keychain: { "kc-key" }).call(ask(), source: "t")
     #expect(wire.requests.first?.value(forHTTPHeaderField: "Authorization") == "Bearer kc-key")
+  }
+
+  @Test func aDeviceTokenRoutesToTheBarestateProxy() async throws {
+    let wire = Wire()
+    wire.reply = { _ in (200, metaReply) }
+    let client = client(wire, environment: [:], deviceToken: { "dev-token" })
+    #expect(client.hasKey)
+    #expect(!client.ownKey)
+    #expect(client.probeURL?.absoluteString == "https://api.barestate.xyz/v1/muse")
+    let response = try await client.call(ask(), source: "t")
+    let request = try #require(wire.requests.first)
+    #expect(request.url?.absoluteString == "https://api.barestate.xyz/v1/muse/responses")
+    #expect(request.value(forHTTPHeaderField: "Authorization") == "Bearer dev-token")
+    #expect(response.text == "pong")
+  }
+
+  @Test func anOwnKeyWinsOverTheDeviceToken() async throws {
+    let wire = Wire()
+    wire.reply = { _ in (200, metaReply) }
+    let client = client(wire, deviceToken: { "dev-token" })
+    #expect(client.ownKey)
+    _ = try await client.call(ask(), source: "t")
+    let request = try #require(wire.requests.first)
+    #expect(request.url?.absoluteString == "https://api.meta.ai/v1/responses")
+    #expect(request.value(forHTTPHeaderField: "Authorization") == "Bearer " + key)
+  }
+
+  @Test func theProxyBaseURLIsOverridable() async throws {
+    let env = ["BARESTATE_API_URL": "http://127.0.0.1:47881/v1/muse"]
+    let wire = Wire()
+    wire.reply = { _ in (200, metaReply) }
+    _ = try await client(wire, environment: env, deviceToken: { "dev-token" })
+      .call(ask(), source: "t")
+    #expect(wire.requests.first?.url?.absoluteString == "http://127.0.0.1:47881/v1/muse/responses")
+  }
+
+  @Test func aProxy402IsRejectedWithItsMessageOnceAndBillsNothing() async throws {
+    let message =
+      "Barestate Muse daily limit reached for this device. Try again tomorrow, "
+      + "or use your own model key in Settings."
+    let path = ledgerPath()
+    let wire = Wire()
+    wire.reply = { _ in (402, "{\"error\":{\"message\":\"\(message)\"}}") }
+    let client = client(wire, environment: [:], deviceToken: { "dev-token" }, ledger: path)
+    await #expect(throws: ModelError.rejected(status: 402, message: message)) {
+      try await client.call(ask(), source: "t")
+    }
+    // 402 is not transient: the run loop's single retry is for 429/5xx only.
+    #expect(wire.requests.count == 1)
+    #expect(!FileManager.default.fileExists(atPath: path))
   }
 
   @Test func aSuccessfulCallAppendsOneSpendEntryAndTheKeyIsNotInIt() async throws {

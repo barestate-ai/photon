@@ -240,9 +240,12 @@ func registerTestHooks(
   }
 
   dispatcher.register("test.type") { params in
-    await post(
+    let target =
+      params["window"]?.string == "settings" ? controller.settingsWindow?.window : controller.window
+    guard let target else { throw RPCError.failure("no window") }
+    return await post(
       SyntheticInput.typeEvents(
-        try params.requireString("text"), windowNumber: try window().windowNumber))
+        try params.requireString("text"), windowNumber: target.windowNumber))
   }
 
   dispatcher.register("test.ime") { params in

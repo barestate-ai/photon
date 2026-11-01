@@ -276,8 +276,13 @@ extension AppController {
   }
 
   /// Settings or About, when it is ordered above the browser window. `orderedWindows` leaves the
-  /// About panel out, so the front-to-back window numbers decide.
+  /// About panel out, so the front-to-back window numbers decide. A locked session goes further:
+  /// the numbers list the browser window first while Settings is visibly key, so a key Settings
+  /// answers before the scan.
   var frontAuxiliaryWindow: NSWindow? {
+    if let settings = settingsWindow?.window, settings.isVisible, settings.isKeyWindow {
+      return settings
+    }
     for number in NSWindow.windowNumbers(options: []) ?? [] {
       guard let other = NSApp.window(withWindowNumber: number.intValue), other.isVisible
       else { continue }

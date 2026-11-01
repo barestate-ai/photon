@@ -22,6 +22,7 @@ public struct ModelClient: Sendable {
   let environment: [String: String]
   let envFile: String?
   let keychain: @Sendable () -> String?
+  let deviceToken: @Sendable () -> String?
   let ledger: SpendLedger
   let transport: ModelTransport
   let timeout: TimeInterval
@@ -32,7 +33,8 @@ public struct ModelClient: Sendable {
 
   public init(
     environment: [String: String], envFile: String?,
-    keychain: @escaping @Sendable () -> String? = { nil }, ledger: SpendLedger,
+    keychain: @escaping @Sendable () -> String? = { nil },
+    deviceToken: @escaping @Sendable () -> String? = { nil }, ledger: SpendLedger,
     transport: @escaping ModelTransport = liveModelTransport, timeout: TimeInterval = 60,
     log: @escaping @Sendable (String) -> Void = { _ in },
     onFailure: @escaping @Sendable (ModelError) -> Void = { _ in }
@@ -40,6 +42,7 @@ public struct ModelClient: Sendable {
     self.environment = environment
     self.envFile = envFile
     self.keychain = keychain
+    self.deviceToken = deviceToken
     self.ledger = ledger
     self.transport = transport
     self.timeout = timeout
@@ -51,20 +54,32 @@ public struct ModelClient: Sendable {
     ModelKey.resolve(variable: "BASETEN_API_KEY", environment: environment, envFile: envFile)
   }
 
-  /// A key for the provider `call` would use is there. Nothing is sent and the value is not read
-  /// out.
-  public var hasKey: Bool {
-    baseten != nil
-      || ModelKey.resolve(environment: environment, envFile: envFile, keychain: keychain) != nil
+  private var meta: ModelKey.Found? {
+    ModelKey.resolve(environment: environment, envFile: envFile, keychain: keychain)
   }
 
-  /// The base URL of the provider `call` would use; a reachability probe goes here.
-  public var probeURL: URL? {
-    URL(
-      string: baseten != nil
-        ? environment["BARESTATE_BASETEN_URL"] ?? Self.basetenURL
-        : environment["BARESTATE_META_URL"] ?? Self.metaURL)
+  /// The provider `call` would use: a Baseten key, then the user's own Meta key, then a
+  /// Barestate Muse device token (D74). The one decision behind `hasKey`, `probeURL`, `select`.
+  private var route: (base: String, key: String, name: String)? {
+    if let baseten {
+      return (environment["BARESTATE_BASETEN_URL"] ?? Self.basetenURL, baseten.value, "baseten")
+    }
+    if let meta { return (environment["BARESTATE_META_URL"] ?? Self.metaURL, meta.value, "meta") }
+    if let token = deviceToken() {
+      return (BarestateMuse.baseURL(environment), token, "barestate")
+    }
+    return nil
   }
+
+  /// The user holds a key of their own (Baseten or Meta); Barestate Muse is only the fallback.
+  public var ownKey: Bool { baseten != nil || meta != nil }
+
+  /// A key for the provider `call` would use is there. Nothing is sent and the value is not read
+  /// out.
+  public var hasKey: Bool { route != nil }
+
+  /// The base URL of the provider `call` would use; a reachability probe goes here.
+  public var probeURL: URL? { route.flatMap { URL(string: $0.base) } }
 
   /// The same client with every spend entry's source prefixed `<session>:`, so a run's cost can
   /// be summed from the ledger. `gate` is asked before each request and may refuse it: the run
@@ -102,21 +117,20 @@ public struct ModelClient: Sendable {
 
   private func select(_ request: ModelRequest) throws -> (any ModelProvider, String) {
     let http = ModelHTTP(transport: transport, timeout: timeout)
-    if let baseten {
-      guard let base = probeURL else {
-        throw ModelError.refused("BARESTATE_BASETEN_URL is not a URL")
-      }
-      let provider = BasetenChatProvider(
-        model: environment["BARESTATE_BASETEN_MODEL"] ?? Self.basetenModel, key: baseten.value,
-        http: http, baseURL: base)
-      return (provider, "baseten")
+    guard let route else { throw ModelError.noKey }
+    guard let base = URL(string: route.base) else {
+      throw ModelError.refused("the \(route.name) base URL is not a URL")
     }
-    guard
-      let meta = ModelKey.resolve(environment: environment, envFile: envFile, keychain: keychain)
-    else { throw ModelError.noKey }
+    if route.name == "baseten" {
+      let provider = BasetenChatProvider(
+        model: environment["BARESTATE_BASETEN_MODEL"] ?? Self.basetenModel, key: route.key,
+        http: http, baseURL: base)
+      return (provider, route.name)
+    }
     let model = ModelRouter.model(
       computer: request.computer, override: environment["BARESTATE_MODEL"])
-    guard let base = probeURL else { throw ModelError.refused("BARESTATE_META_URL is not a URL") }
-    return (MetaResponsesProvider(model: model, key: meta.value, http: http, baseURL: base), "meta")
+    return (
+      MetaResponsesProvider(model: model, key: route.key, http: http, baseURL: base), route.name
+    )
   }
 }

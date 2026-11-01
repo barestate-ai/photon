@@ -206,6 +206,7 @@ extension AppController {
       fields["focused"] = settingsWindow.focusedLabel.map { .string($0) } ?? .null
       fields["remote"] = settingsWindow.remoteState
       fields["atom"] = settingsWindow.atomState
+      fields["muse"] = settingsWindow.museState
     }
     return .object(fields)
   }
