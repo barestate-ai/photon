@@ -150,10 +150,12 @@ class EmptyCanvasTests(CanvasCase):
         self.assertEqual(self.overview()["title"]["text"], "Trip planning")
 
         tab_to("canvasTitle")
-        self.key("Tab")
-        self.assertEqual(responder(), "commandButton")
-        self.key("Tab", "shift")
-        self.assertEqual(responder(), "canvasTitle")
+        for wanted in ("zoomOut", "zoomPercent", "zoomIn", "commandButton"):
+            self.key("Tab")
+            self.assertEqual(responder(), wanted)
+        for wanted in ("zoomIn", "zoomPercent", "zoomOut", "canvasTitle"):
+            self.key("Tab", "shift")
+            self.assertEqual(responder(), wanted)
         self.key("Escape")
 
 

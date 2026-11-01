@@ -488,11 +488,11 @@ class KeyboardTests(AccessCase):
         self.open_page("Reach page")
         self.show_overview()
         visited = []
-        for _ in range(4):
+        for _ in range(5):
             self.key("Tab")
             visited.append(self.responder())
         save("tab-overview.json", visited)
-        self.assertIn("commandButton", visited)
+        self.assertEqual(visited, ["canvasTitle", "zoomOut", "zoomPercent", "zoomIn", "commandButton"])
         self.show_page()
         self.key("f", "cmd")
         bs.wait_until(lambda: self.ui()["chrome"]["find"]["open"], what="find bar")

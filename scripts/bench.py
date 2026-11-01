@@ -411,16 +411,20 @@ def launcher_bench(fixtures, args, work):
             and bs.nearest_rank(updates, 0.95) < LAUNCHER_BUDGET_MS}
 
 
-def pan_intervals(app):
+def pan_intervals(app, press=None):
     """Intervals between the committed canvas updates of PAN_REPEATS pans of PAN_SECONDS each. The
     app scrolls the overview on every display-link tick (what test.scroll does, without a socket
-    round trip per step) inside a transaction and timestamps its commit. Also returned: the raw
-    display-link tick intervals, and the steps, commits and steps whose position was not yet in the
-    presentation layer on the next tick."""
+    round trip per step) inside a transaction and timestamps its commit. With `press` (a window
+    point on empty canvas) it instead presses there and drags the pointer by the same step per tick
+    through the mouse handlers. Also returned: the raw display-link tick intervals, and the steps,
+    commits and steps whose position was not yet in the presentation layer on the next tick."""
     intervals, ticks, refresh = [], [], 0
     counts = {"steps": 0, "commits": 0, "notPresented": 0}
     for _ in range(PAN_REPEATS):
-        app.call("test.frameProbe", {"action": "start", "pan": {"dx": 8, "dy": 3}})
+        pan = {"dx": 8, "dy": 3}
+        if press:
+            pan["press"] = press
+        app.call("test.frameProbe", {"action": "start", "pan": pan})
         time.sleep(PAN_SECONDS)
         result = app.call("test.frameProbe", {"action": "stop"})
         intervals += [round(v, 2) for v in result["intervalsMs"]]
@@ -480,6 +484,8 @@ def toggle_and_pan_bench(fixtures, args, work):
         set_presentation(app, "overview")
         time.sleep(1)
         intervals, ticks, counts, refresh = pan_intervals(app)
+        # Empty canvas: the fit leaves the margin at the right edge clear of every card.
+        drag_intervals, _, drag_counts, _ = pan_intervals(app, press={"x": 1390, "y": 450})
         set_presentation(app, "focused")
         app.call("test.toggleTimings", {"reset": True})
         full_warm, full_samples = FULL_WINDOW_SAMPLES
@@ -507,12 +513,16 @@ def toggle_and_pan_bench(fixtures, args, work):
             "pan": summarize(intervals), "pan_ticks": summarize(ticks), "pan_counts": counts,
             "pan_repeats": PAN_REPEATS, "pan_seconds": PAN_SECONDS,
             "pan_budget_ms": PAN_BUDGET_MS,
+            "pan_drag": summarize(drag_intervals), "pan_drag_counts": drag_counts,
             "full_window_enter": summarize([round(v, 2) for v in entering]),
             "full_window_leave": summarize([round(v, 2) for v in leaving_full]),
             "pass": full_window_ok and len(toggles) == samples and len(intervals) >= PAN_MIN_INTERVALS
             and len(leaving) == len(presentation_starts) and stored and not late_ms and not timeouts
             and counts["commits"] >= counts["steps"] - 2 * PAN_REPEATS
             and counts["notPresented"] <= counts["steps"] // 10
+            and len(drag_intervals) >= PAN_MIN_INTERVALS
+            and drag_counts["commits"] >= drag_counts["steps"] - 2 * PAN_REPEATS
+            and bs.nearest_rank(drag_intervals, 0.95) <= PAN_BUDGET_MS
             and toggle_p95 < TOGGLE_BUDGET_MS and interval_p95 <= PAN_BUDGET_MS}
 
 
@@ -639,6 +649,9 @@ def print_report(report):
             t = spatial[label]
             print(f"overview {label.replace('_', ' ')}: n {t['n']}, p50 {t['p50']} ms, p95 {t['p95']} ms, "
                   f"max {t['max']} ms")
+        d, k = spatial["pan_drag"], spatial["pan_drag_counts"]
+        print(f"overview empty-canvas drag: n {d['n']}, p50 {d['p50']} ms, p95 {d['p95']} ms, "
+              f"max {d['max']} ms; {k['steps']} steps, {k['commits']} commits")
         c = spatial["capture"]
         print(f"overview leaving capture: n {c['n']}, p50 {c['p50']} ms, p95 {c['p95']} ms, "
               f"p99 {c['p99']} ms, max {c['max']} ms; finished after the presentation started: "

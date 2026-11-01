@@ -228,3 +228,15 @@ Entering and leaving Full window (Cmd-Return, key-down at `sendEvent` to a settl
 | Pan frame interval | p95 <= 20 ms | p50 16.67 ms, p95 **16.92 ms**, max 17.35 ms, n 597 | **pass** |
 
 Under Reduce Motion a Full window move is instant: one frame change of the same browser view and no ledger item, so the level is settled at the commit (about a millisecond). Without Reduce Motion the move is one `camera` item of at most 0.45 s (spring) and the timer waits for the ledger to empty; that figure is not part of this table.
+
+## Mouse pan, ⌘-scroll zoom and the zoom pill: overview budgets (2026-11-02, D79)
+
+Same method and dataset as the Frontend section: 20 live pages with previews, 1440x900, 60 Hz, Reduce Motion on for the toggle, `make bundle` output with `--test-hooks`, 1-minute load average about 11 at the start. Command: `python3 scripts/bench.py overview --out .logs/bench-view-mouse.json` (stdout in `.logs/bench-view-mouse.log`). The new row presses on empty canvas at (1390, 450) and drags the pointer 8 x 3 pt per display-link tick, back and forth every 30 ticks, through `CanvasView.mouseDown`, `mouseDragged` and `mouseUp` (`test.frameProbe` with `pan.press`; the hook refuses a press that lands on a card). The interval is the time between the commits of consecutive pan steps.
+
+| Measure | Budget | Result | |
+|---|---|---|---|
+| Overview toggle (20 + 100 alternating) | p95 < 100 ms | p50 53.66 ms, p95 **70.44 ms**, max 83.78 ms, n 100 | **pass** |
+| Pan by scroll, committed canvas updates (5 x 2 s) | p95 <= 20 ms | p50 16.67 ms, p95 **16.93 ms**, max 17.34 ms, n 597; 602 steps, 602 commits, 0 not presented | **pass** |
+| Pan by dragging empty canvas, committed canvas updates (5 x 2 s) | p95 <= 20 ms | p50 16.67 ms, p95 **17.21 ms**, max 32.56 ms, n 596 intervals from 602 steps and 601 commits | **pass** |
+
+A first run of the same command, before the probe refused a press on a card, measured the drag at p50 16.67 ms, p95 17.12 ms, max 24.98 ms (n 598). The max is a single late frame under the machine load, not a trend; the p95 sits within 0.3 ms of the display's own 16.67 ms tick.
