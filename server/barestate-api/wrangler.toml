@@ -1,0 +1,20 @@
+# barestate-api: Photon's Muse proxy. See worker.mjs. Deploy with scripts/deploy-api.sh
+# (never a bare `wrangler deploy`: the script keeps the KV id, the secret and the invites
+# key in sync). account 31vivekpal@gmail.com, zone barestate.xyz.
+name = "barestate-api"
+main = "worker.mjs"
+compatibility_date = "2026-10-01"
+account_id = "476f3d30838d09d1253b76f0c92c265d"
+
+routes = [{ pattern = "api.barestate.xyz", custom_domain = true }]
+
+# The id is synced in by scripts/deploy-api.sh from the barestate-api-kv namespace.
+kv_namespaces = [{ binding = "STATE", id = "b52da027ff9d4afc91acacbd86efa1d5" }]
+
+[vars]
+UPSTREAM_URL = "https://api.meta.ai/v1/responses"
+ALLOWED_MODELS = "muse-spark-1.3"
+GLOBAL_DAILY_CAP_USD = "10.00"
+DEFAULT_DEVICE_DAILY_CAP_USD = "2.00"
+MAX_BODY_BYTES = "10485760"
+UPSTREAM_TIMEOUT_MS = "60000"

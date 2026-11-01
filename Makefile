@@ -2,7 +2,7 @@ SWIFT_TESTING_PLUGINS = /Library/Developer/CommandLineTools/usr/lib/swift/host/p
 SWIFT_SOURCES = Package.swift Sources/Barestate Sources/BarestateCore Sources/barestate-mcp \
 	Sources/barestate-gateway Tests
 
-.PHONY: vendor build bundle test lint check check-agpl atom atom-archive e2e bench dmg dist clean
+.PHONY: vendor build bundle test test-api lint check check-agpl atom atom-archive e2e bench dmg dist clean
 
 vendor:
 	scripts/fetch-cef.sh
@@ -18,6 +18,9 @@ test: vendor
 	@if ps -axo pid,command | grep -F "$(CURDIR)/.build" | grep '[f]ake_atom.py'; then \
 		echo "test: a fake Atom runtime was left running (pids above)"; exit 1; fi
 
+test-api:
+	node --test server/barestate-api/worker.test.mjs
+
 lint:
 	swift format lint --strict --recursive $(SWIFT_SOURCES)
 	@for f in scripts/*.sh; do bash -n "$$f" || exit 1; done
@@ -30,7 +33,7 @@ check-agpl:
 	@if grep -q '\.package(' Package.swift; then echo "check-agpl: Package.swift has a package dependency"; exit 1; fi
 	@echo "check-agpl: ok"
 
-check: build test
+check: build test test-api
 	scripts/check-secrets.sh
 	$(MAKE) --no-print-directory check-agpl lint
 
