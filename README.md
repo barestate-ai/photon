@@ -42,12 +42,14 @@ Photon looks for the key in this order: `MODEL_API_KEY` in the environment, then
 
 Atom is a small local model that turns "click Save" and a screenshot into a point, before Photon asks Muse. Without it the act ladder skips that step. Apple silicon only; it needs about 1.4 GB of disk (1.2 GB of runtime and 161 MB of model, measured with `du`).
 
+Install it from Photon: **Settings (⌘,) → Atom → Install Atom**. The window shows the installer's progress, Cancel stops it, and a failed install says why in one line with a Try again button; when it finishes the section reads Ready and the next task uses Atom — no restart. The same install from a terminal:
+
 ```sh
 /Applications/Photon.app/Contents/Resources/atom/setup-atom.sh   # from an installed app
 make atom                                                        # from a checkout
 ```
 
-It downloads a pinned Python 3.11 and its hash-locked packages into `~/Library/Application Support/Barestate/Runtime`, then the model into `~/Library/Application Support/Barestate/models/atom/tinyclick-4bit-v1/tinyclick-4bit`, checking every model file against its pinned size and SHA-256. The model comes from the public `https://download.barestate.xyz/atom-tinyclick-4bit-v1.tar.gz` (no account needed; override with `ATOM_URL` or `ATOM_ARCHIVE=<file>`; the `v0.1.0` GitHub release asset is the fallback). The runtime is vendored in [runtime/atom/](runtime/atom/README.md). `BARESTATE_RUNTIME_DIR` and `BARESTATE_ATOM_MODEL` change the two directories; `BARESTATE_ATOM_PYTHON`, `BARESTATE_ATOM_RUNTIME` and `BARESTATE_ATOM_MODEL` tell the app where to look.
+It downloads a pinned Python 3.11 and its hash-locked packages into `~/Library/Application Support/Barestate/Runtime`, then the model into `~/Library/Application Support/Barestate/models/atom/tinyclick-4bit-v1/tinyclick-4bit`, checking every model file against its pinned size and SHA-256. The model comes from the public `https://download.barestate.xyz/atom-tinyclick-4bit-v1.tar.gz` (works for anyone, no account or auth; the `v0.1.0` GitHub release asset stays as the fallback; override with `ATOM_URL` or `ATOM_ARCHIVE=<file>`). The runtime is vendored in [runtime/atom/](runtime/atom/README.md). `BARESTATE_RUNTIME_DIR` and `BARESTATE_ATOM_MODEL` change the two directories; `BARESTATE_ATOM_PYTHON`, `BARESTATE_ATOM_RUNTIME` and `BARESTATE_ATOM_MODEL` tell the app where to look.
 
 ## Build locally
 
