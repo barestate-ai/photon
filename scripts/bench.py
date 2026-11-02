@@ -26,7 +26,9 @@ of `all`.
 frontend: with exactly 20 live pages (the app's blank tab is closed once they are open) holding
 previews at 1440x900, the overview toggle (Cmd-Shift-\\
 key-down to a settled presentation, Reduce Motion on, 20 + 100 alternating toggles, test.toggleTimings),
-entering and leaving Full window (Cmd-Return the same way, 10 + 50 per direction), and the pan frame interval (5 x 2 s of overview scrolling, one test.scroll-sized step per
+entering and leaving Full window (Cmd-Return the same way, 10 + 50 per direction), maximizing a
+hovered card from the overview by clicking its control and restoring with the exit control (10 + 50
+per direction), and the pan frame interval (5 x 2 s of overview scrolling, one test.scroll-sized step per
 display-link tick in its own transaction, the interval being the time between the commits of
 consecutive steps from test.frameProbe, at least 500 intervals), and for every leaving toggle the
 capture's duration and whether it finished after the camera or swap began (it must not, and the
@@ -83,6 +85,7 @@ FRONTEND_PAGES = 20
 TOGGLE_SAMPLES = (20, 100)
 TOGGLE_BUDGET_MS = 100
 FULL_WINDOW_SAMPLES = (10, 50)
+MAXIMIZE_SAMPLES = (10, 50)
 PAN_REPEATS = 5
 PAN_SECONDS = 2
 PAN_MIN_INTERVALS = 500
@@ -442,6 +445,51 @@ def presentation_start_ms(app):
     return max(starts)
 
 
+def maximize_and_restore(app):
+    """Maximize a hovered card's page from the overview with a click on its control, then restore
+    with a click on the exit control, alternating over the cards. Each is timed from the click's
+    action to the settled view (test.toggleTimings); the pointer moves first so the control is up.
+    The settle is read from test.motion every 10 ms, the way the contract defines it: reading the
+    presentation layers is what delivers a finished Core Animation completion in an app nobody is
+    looking at (a locked screen); unread, it waits for the ledger's 150 ms fallback."""
+    def point_at(target):
+        # A person's pointer is on the control before the press; its hover fill is not the move.
+        app.call("test.move", {"target": target})
+        bs.wait_until(lambda: not app.call("test.motion")["inFlight"], what="the hover fill")
+
+    set_presentation(app, "overview")
+    nodes = [n["id"] for n in app.call("test.ui")["canvas"]["nodes"]]
+    warm, samples = MAXIMIZE_SAMPLES
+
+    def timed(count, what):
+        def done():
+            app.call("test.motion")
+            return len(app.call("test.toggleTimings")["toggle"]) == count
+        bs.wait_until(done, interval=0.01, what=what)
+
+    app.call("test.toggleTimings", {"reset": True})
+    for i in range(warm + samples):
+        node = nodes[i % len(nodes)]
+        app.call("test.move", {"target": f"node:{node}"})
+        bs.wait_until(lambda: any(c["node"] == node for c in app.call("test.ui")["maximize"]),
+                      what=f"the Maximize control on {node}")
+        point_at(f"maximize:{node}")
+        app.call("test.click", {"target": f"maximize:{node}"})
+        timed(2 * i + 1, f"maximize {i} to settle")
+        if app.call("test.ui")["presentation"] != "full-window":
+            raise RuntimeError(f"maximize {i} did not reach Full window")
+        app.call("test.move", {"x": 1400, "y": 50})
+        bs.wait_until(lambda: app.call("test.ui")["fullWindow"]["exitControl"]["visible"],
+                      what="the exit control")
+        point_at("exitFullWindow")
+        app.call("test.click", {"target": "exitFullWindow"})
+        timed(2 * i + 2, f"restore {i} to settle")
+        if app.call("test.ui")["presentation"] != "overview":
+            raise RuntimeError(f"restore {i} did not return to the overview")
+    both = app.call("test.toggleTimings", {"reset": True})["toggle"]
+    return both[0::2][warm:], both[1::2][warm:]
+
+
 def toggle_and_pan_bench(fixtures, args, work):
     """Overview toggle (key-down to settled, Reduce Motion on) and pan frame intervals, with 20
     live pages that hold previews at 1440x900."""
@@ -498,6 +546,7 @@ def toggle_and_pan_bench(fixtures, args, work):
                 raise RuntimeError(f"full window change {i} did not reach {want}")
         both = app.call("test.toggleTimings", {"reset": True})["toggle"]
         entering, leaving_full = both[0::2][full_warm:], both[1::2][full_warm:]
+        maximizing, restoring = maximize_and_restore(app)
     finally:
         app.stop()
     toggle_p95 = bs.nearest_rank(toggles, 0.95)
@@ -505,6 +554,9 @@ def toggle_and_pan_bench(fixtures, args, work):
     full_window_ok = all(
         len(values) == full_samples and bs.nearest_rank(values, 0.95) < TOGGLE_BUDGET_MS
         for values in (entering, leaving_full))
+    maximize_ok = all(
+        len(values) == MAXIMIZE_SAMPLES[1] and bs.nearest_rank(values, 0.95) < TOGGLE_BUDGET_MS
+        for values in (maximizing, restoring))
     return {"dataset": {"livePages": FRONTEND_PAGES, "nodes": nodes, "window": "1440x900",
                         "reduceMotion": True, "refreshHz": refresh},
             "toggle": summarize([round(v, 2) for v in toggles]), "toggle_budget_ms": TOGGLE_BUDGET_MS,
@@ -516,7 +568,9 @@ def toggle_and_pan_bench(fixtures, args, work):
             "pan_drag": summarize(drag_intervals), "pan_drag_counts": drag_counts,
             "full_window_enter": summarize([round(v, 2) for v in entering]),
             "full_window_leave": summarize([round(v, 2) for v in leaving_full]),
-            "pass": full_window_ok and len(toggles) == samples and len(intervals) >= PAN_MIN_INTERVALS
+            "maximize": summarize([round(v, 2) for v in maximizing]),
+            "maximize_restore": summarize([round(v, 2) for v in restoring]),
+            "pass": full_window_ok and maximize_ok and len(toggles) == samples and len(intervals) >= PAN_MIN_INTERVALS
             and len(leaving) == len(presentation_starts) and stored and not late_ms and not timeouts
             and counts["commits"] >= counts["steps"] - 2 * PAN_REPEATS
             and counts["notPresented"] <= counts["steps"] // 10
