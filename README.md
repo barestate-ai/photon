@@ -4,6 +4,8 @@ Photon is a native macOS browser by Barestate. Your open pages sit on one canvas
 
 ![The overview canvas: six open pages as cards, with the trail between them](docs/screenshots/overview.png)
 
+Taking over the project? Start with [HANDOVER.md](HANDOVER.md): current state, repo map, build and release steps, model access, known issues.
+
 ## Benchmarks
 
 **[BENCH.md](BENCH.md) has every budget with its command, sample count and raw output.** Headline figures, measured on the release bundle (M4 Mac, macOS 27.0.1):
