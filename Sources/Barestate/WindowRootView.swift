@@ -35,6 +35,7 @@ final class WindowRootView: NSView {
   let findBar = FindBarView()
   let flightView = FlightView()
   let launcher = LauncherView()
+  let cardMenu = CardMenuView()
   let approvalCard = ApprovalCardView()
   let orb = ThinkingOrbView()
   let activity = RunActivityView()
@@ -141,7 +142,7 @@ final class WindowRootView: NSView {
     exitControl.onClick = { [weak self] in self?.onExitFullWindow?() }
     for view in [
       container, backdrop, chrome, notice, hint, commandButton, compactChip, findBar, exitControl,
-      approvalCard, phoneChip, activity, launcher, orb,
+      approvalCard, phoneChip, activity, cardMenu, launcher, orb,
     ]
       as [NSView]
     {
@@ -151,12 +152,14 @@ final class WindowRootView: NSView {
     layoutChildren()
   }
 
-  /// Tab walks the approval's buttons, the canvas, the overview's title, the command button and
-  /// the find controls; the views that are hidden in the current presentation are skipped.
-  private func linkKeyLoop() {
+  /// Tab walks the approval's buttons, the canvas, the overview's title, the Maximize controls of
+  /// its cards, the command button and the find controls; the views that are hidden in the
+  /// current presentation are skipped.
+  func linkKeyLoop() {
     let title = canvasView.map { [$0.titleField] } ?? []
+    let maximize: [NSView] = canvasView?.maximize.buttons.values.sorted { $0.node < $1.node } ?? []
     let loop: [NSView] =
-      [self] + approvalCard.keyViews + title + (canvasView?.zoomPill.keyViews ?? [])
+      [self] + approvalCard.keyViews + title + maximize + (canvasView?.zoomPill.keyViews ?? [])
       + [commandButton, phoneChip.disconnect]
       + findBar.keyViews.map(\.view)
       + [self]
@@ -166,6 +169,7 @@ final class WindowRootView: NSView {
   required init?(coder: NSCoder) { fatalError("not used") }
 
   override func setFrameSize(_ newSize: NSSize) {
+    if newSize != frame.size { cardMenu.dismiss() }
     super.setFrameSize(newSize)
     layoutChildren()
   }
@@ -234,6 +238,7 @@ final class WindowRootView: NSView {
     showExitControl(fillsWindow && exitZone.contains(point))
     caption.setControlShown(!fillsWindow && caption.frame.contains(point))
     canvasView?.pointerMoved(to: point)
+    focusContext?.pointerMoved(to: point)
   }
 
   private func showExitControl(_ shown: Bool) {
@@ -590,6 +595,7 @@ final class WindowRootView: NSView {
       x: (bounds.width - 48 - phoneChip.frame.width).rounded(),
       y: (54 - phoneChip.frame.height / 2).rounded())
     activity.frame = bounds
+    cardMenu.frame = bounds
     launcher.frame = bounds
     if landing { camera?.app.applyPresentation(settling: true) }
   }

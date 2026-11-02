@@ -58,8 +58,14 @@ final class AppController: NSObject, NSApplicationDelegate, NSWindowDelegate {
   }
   /// The focused page fills the window (Full window). Only a focused page can; the overview ends it.
   var fillsWindow = false {
-    didSet { root?.fillsWindow = fillsWindow }
+    didSet {
+      root?.fillsWindow = fillsWindow
+      if !fillsWindow { maximizedFromOverview = false }
+    }
   }
+  /// The page took the window straight from its card in the overview, so leaving Full window
+  /// goes back to that card.
+  var maximizedFromOverview = false
   var viewLevel: ViewLevel { ViewLevel(presentation, fillsWindow: fillsWindow) }
   /// The one step a pinch out has taken so far, so the rest of the same gesture does not take another.
   var pinchStepped = false

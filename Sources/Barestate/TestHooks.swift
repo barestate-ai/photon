@@ -72,6 +72,8 @@ func registerTestHooks(
       "cefBrowserCount": .number(Double(controller.cefBrowserCount)),
       "canvas": controller.canvasState(),
       "overview": controller.overviewState(),
+      "maximize": controller.maximizeState(),
+      "cardMenu": controller.cardMenuState(),
       "zoomPill": controller.zoomPillState(),
       "focus": controller.focusState(),
       "chrome": controller.chromeState(),
@@ -292,7 +294,7 @@ func registerTestHooks(
     let posted = await post(
       SyntheticInput.clickEvents(
         at: point, windowNumber: win.windowNumber, modifiers: try modifiers(params),
-        count: params["count"]?.int ?? 1))
+        count: params["count"]?.int ?? 1, right: params["button"]?.string == "right"))
     return [
       "posted": posted["posted"] ?? .null,
       "hit": .string(hit.map { String(describing: type(of: $0)) } ?? "none"),
@@ -532,6 +534,13 @@ func registerTestHooks(
       return .array(accessibilityChildren(of: settings, in: settings))
     }
     let main = try window()
+    if let label = params["press"]?.string {
+      guard let element = pressable(labelled: label, in: main) else {
+        throw RPCError.failure("no accessibility element labelled \(label) with a press action")
+      }
+      _ = element.accessibilityPerformPress()
+      return ["pressed": .string(label)]
+    }
     // AppKit publishes the traffic lights through the window's own attributes; the buttons
     // themselves are not accessibility elements.
     let lights = [
@@ -548,6 +557,30 @@ func registerTestHooks(
     }
     return .array(accessibilityChildren(of: main, in: main) + lights)
   }
+}
+
+/// The first element of the window's tree with this label that has a press action, as
+/// VoiceOver's AXPress would reach it.
+@MainActor
+private func pressable(labelled label: String, in window: NSWindow) -> NSAccessibilityProtocol? {
+  func search(_ element: Any, depth: Int) -> NSAccessibilityProtocol? {
+    guard depth < 8, let element = element as? NSAccessibilityProtocol else { return nil }
+    for child in element.accessibilityChildren() ?? [] {
+      if child is TabContentView { continue }
+      let control = (child as? NSCell)?.controlView ?? child
+      let presses =
+        control is NodeAccessibilityElement
+        || (control as? NSObject)?.accessibilityActionNames().contains(.press) == true
+      if let found = control as? NSAccessibilityProtocol, presses,
+        found.accessibilityLabel() == label
+      {
+        return found
+      }
+      if !(child is NSCell), let found = search(control, depth: depth + 1) { return found }
+    }
+    return nil
+  }
+  return search(window, depth: 0)
 }
 
 /// The app's own accessibility tree. Web content is a leaf: its tree belongs to `observe`.

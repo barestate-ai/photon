@@ -19,7 +19,9 @@ extension AppController {
       BSCef.focusBrowser(tab.browserId)
     }
     root.onEmptyClick = { [weak self] in self?.emptyClicked() }
-    root.onExitFullWindow = { [weak self] in self?.setFullWindow(false) }
+    root.onExitFullWindow = { [weak self] in self?.exitFullWindow(byKey: false) }
+    root.cardMenu.onChoose = { [weak self] action, node in self?.perform(action, on: node) }
+    root.cardMenu.onDismiss = { [weak self] in self?.returnKeyboard() }
     root.caption.expand.onClick = { [weak self] in self?.setFullWindow(true) }
     runs.onChange = { [weak self] in self?.refreshChrome() }
     root.approvalCard.onDecide = { [weak self] item, allow in

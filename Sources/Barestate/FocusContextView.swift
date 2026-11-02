@@ -25,6 +25,9 @@ final class FocusContextView: NSView {
   /// One per recorded connection between a column card and the focused page.
   private(set) var trails: [String: (route: EdgeRoute, line: CAShapeLayer)] = [:]
   private var pressed: String?
+  private(set) var hovered: String?
+  private(set) lazy var maximize = MaximizeControls(
+    host: self, press: { [unowned self] id in app.maximize(node: id) }, changed: {})
 
   override var isFlipped: Bool { true }
   override func acceptsFirstMouse(for event: NSEvent?) -> Bool { true }
@@ -62,13 +65,39 @@ final class FocusContextView: NSView {
 
   /// Only a column card is hit; the rest of the window, page included, is not this view's.
   override func hitTest(_ point: NSPoint) -> NSView? {
-    guard !isHidden, slots.contains(where: { $0.rect.contains(convert(point, from: superview)) })
-    else { return nil }
-    return self
+    guard !isHidden else { return nil }
+    let local = convert(point, from: superview)
+    if let control = maximize.shown.first(where: { $0.frame.contains(local) }) { return control }
+    return slots.contains(where: { $0.rect.contains(local) }) ? self : nil
   }
 
   private func slot(at point: CGPoint) -> String? {
     slots.first { $0.rect.contains(point) }?.id
+  }
+
+  /// The pointer, really or by a hook, is at `point` of the window: a column card under it is
+  /// hovered, and shows what a click on it does.
+  func pointerMoved(to point: CGPoint) {
+    let id = isHidden || app.fillsWindow ? nil : slot(at: point)
+    guard id != hovered else { return }
+    if let old = hovered { cards[old]?.setHover(false) }
+    hovered = id
+    if let id { cards[id]?.setHover(true) }
+    syncMaximize()
+  }
+
+  private func syncMaximize() {
+    var targets: [String: MaximizeControls.Target] = [:]
+    if let id = hovered, let card = cards[id], let rect = cardRect(id) {
+      targets[id] = .init(title: card.look.title, card: rect)
+    }
+    maximize.sync(targets, live: Set(slots.map(\.id)), animated: !isHidden && !app.fillsWindow)
+  }
+
+  override func rightMouseDown(with event: NSEvent) {
+    let point = convert(event.locationInWindow, from: nil)
+    guard let id = slot(at: point) else { return }
+    app.showCardMenu(for: id, at: point)
   }
 
   override func mouseDown(with event: NSEvent) {
@@ -92,7 +121,12 @@ final class FocusContextView: NSView {
     if focused && root.fillsWindow { return }
     let wasShown = !isHidden
     isHidden = !focused
-    guard focused else { return mark.hide() }
+    guard focused else {
+      if let old = hovered { cards[old]?.setHover(false) }
+      hovered = nil
+      syncMaximize()
+      return mark.hide()
+    }
     let layout = root.focusLayout
     let scale = window?.backingScaleFactor ?? 2
     CATransaction.begin()
@@ -111,6 +145,8 @@ final class FocusContextView: NSView {
     for id in cards.keys where !live.contains(id) {
       cards.removeValue(forKey: id)?.layer.removeFromSuperlayer()
     }
+    if let id = hovered, !live.contains(id) { hovered = nil }
+    syncMaximize()
     drawTrails(layout)
   }
 

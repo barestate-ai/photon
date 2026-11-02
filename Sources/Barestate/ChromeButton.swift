@@ -89,7 +89,7 @@ class ChromeButton: NSButton {
   /// Space and Return both press a focused button, as the design's keyboard model says.
   override func keyDown(with event: NSEvent) {
     if [36, 49, 76].contains(event.keyCode) {
-      performClick(nil)
+      if !event.isARepeat { performClick(nil) }
     } else if event.keyCode == 48 {
       moveKeyFocus(event)
     } else {

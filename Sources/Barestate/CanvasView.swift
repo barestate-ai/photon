@@ -49,6 +49,9 @@ final class CanvasView: NSView, NSTextFieldDelegate {
   /// session) is simply there.
   private var hasDrawn = false
   private(set) var hovered: String?
+  private(set) lazy var maximize = MaximizeControls(
+    host: self, press: { [unowned self] id in app.maximize(node: id) },
+    changed: { [unowned self] in app.root?.linkKeyLoop() })
   /// A pinch past the zoom limits: the unclamped zoom, and where the pinch is anchored.
   private var overshoot: (raw: Double, anchor: CGPoint)?
   /// Until the person moves the camera, it keeps every page in view and centred. Nil until the
@@ -235,9 +238,12 @@ final class CanvasView: NSView, NSTextFieldDelegate {
       gone?.layer.removeFromSuperlayer()
     }
     drawTrails(camera, entering: entering)
+    syncMaximize()
     hasDrawn = true
     legend.show(legendItems)
     zoomPill.show(percent: camera.zoomPercent)
+    // A page growing out of its card covers the overview; its controls leave at once.
+    zoomPill.isHidden = app.fillsWindow
     titleField.stringValue =
       titleField.currentEditor() == nil ? graph.title : titleField.stringValue
   }
@@ -471,6 +477,20 @@ final class CanvasView: NSView, NSTextFieldDelegate {
     if let old = hovered { cards[old]?.setHover(false) }
     hovered = id
     if let id { cards[id]?.setHover(true) }
+    syncMaximize()
+  }
+
+  /// The Maximize control shows on the hovered card and on the one the keys have selected.
+  private func syncMaximize() {
+    var targets: [String: MaximizeControls.Target] = [:]
+    let showing = app.presentation == .overview && !app.fillsWindow
+    if showing {
+      for id in [hovered, selected].compactMap({ $0 }) {
+        guard let card = cards[id], let rect = cardRect(id) else { continue }
+        targets[id] = .init(title: card.look.title, card: rect)
+      }
+    }
+    maximize.sync(targets, live: Set(graph.nodes.map(\.id)), animated: showing)
   }
 
   private func makeTrail(_ key: String) -> CAShapeLayer {
@@ -678,6 +698,13 @@ final class CanvasView: NSView, NSTextFieldDelegate {
     refresh()
   }
 
+  /// A right-click on a card offers what can be done with that page.
+  override func rightMouseDown(with event: NSEvent) {
+    let point = convert(event.locationInWindow, from: nil)
+    guard !zoomPill.frame.contains(point), let id = nodeId(at: point) else { return }
+    app.showCardMenu(for: id, at: point)
+  }
+
   override func mouseDragged(with event: NSEvent) {
     let point = convert(event.locationInWindow, from: nil)
     guard var held = drag else { return panned(to: point) }
@@ -800,6 +827,7 @@ final class CanvasView: NSView, NSTextFieldDelegate {
       }
       elements.append(element)
       if node.id == hovered { elements.append(openChipElement(for: node, in: local)) }
+      if let control = maximize.buttons[node.id], control.isShown { elements.append(control) }
     }
     nodeElements = nodeElements.filter { live.contains($0.key) }
     return elements
@@ -823,13 +851,7 @@ final class CanvasView: NSView, NSTextFieldDelegate {
   }
 
   /// The chip of a card drawn at `card`, scaled with it.
-  static func chipRect(in card: CGRect) -> CGRect {
-    let scale = card.width / PageGraph.nodeWidth
-    let chip = NodeCard.chipFrame
-    return CGRect(
-      x: card.minX + chip.minX * scale, y: card.minY + chip.minY * scale,
-      width: chip.width * scale, height: chip.height * scale)
-  }
+  static func chipRect(in card: CGRect) -> CGRect { NodeCard.place(NodeCard.chipFrame, in: card) }
 
   private func museStatus(of node: PageNode) -> String? {
     app.runs.runs(ownedBy: node.tabId).last?.museLabel

@@ -23,4 +23,11 @@ import Testing
     #expect(ViewLevel.overview.canToggleFullWindow(hasSelection: true))
     #expect(!ViewLevel.overview.canToggleFullWindow(hasSelection: false))
   }
+
+  @Test func leavingFullWindowReturnsToWhereTheMaximizeStartedFrom() {
+    #expect(ViewLevel.fullWindow.exited(maximizedFromOverview: true) == .overview)
+    #expect(ViewLevel.fullWindow.exited(maximizedFromOverview: false) == .focused)
+    #expect(ViewLevel.focused.exited(maximizedFromOverview: true) == .focused)
+    #expect(ViewLevel.overview.exited(maximizedFromOverview: false) == .overview)
+  }
 }

@@ -95,13 +95,17 @@ enum SyntheticInput {
   }
 
   /// `point` is in window coordinates (origin bottom-left). `count` presses in a row, the nth
-  /// carrying click count n, as a double-click does.
+  /// carrying click count n, as a double-click does. `right` presses the secondary button.
   static func clickEvents(
-    at point: NSPoint, windowNumber: Int, modifiers: NSEvent.ModifierFlags = [], count: Int = 1
+    at point: NSPoint, windowNumber: Int, modifiers: NSEvent.ModifierFlags = [], count: Int = 1,
+    right: Bool = false
   ) -> [NSEvent] {
     var steps: [(NSEvent.EventType, Float, Int)] = [(.mouseMoved, 0, 0)]
     for press in 1...max(1, count) {
-      steps += [(.leftMouseDown, 1, press), (.leftMouseUp, 0, press)]
+      steps += [
+        (right ? .rightMouseDown : .leftMouseDown, 1, press),
+        (right ? .rightMouseUp : .leftMouseUp, 0, press),
+      ]
     }
     return steps.compactMap { type, pressure, clicks in
       NSEvent.mouseEvent(

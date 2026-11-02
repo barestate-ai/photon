@@ -14,6 +14,7 @@ extension AppController {
   /// `settling` is the camera landing on a page: the one moment the live view appears.
   func applyPresentation(settling: Bool = false) {
     guard let root else { return }
+    root.cardMenu.dismiss(returningKeys: false)
     let focused = presentation == .focused
     let flying = camera.defersFocus && !settling
     // Each page view is hidden on its own, except a blank page that was never shown: hiding it
@@ -198,9 +199,11 @@ final class ToggleTimer {
 
   init(settled: @escaping (ViewLevel) -> Bool) { self.settled = settled }
 
-  func begin(toward target: ViewLevel) {
+  /// A move a key started counts from that key-down; a pointer's counts from the action, so a key
+  /// pressed just before a click is not billed to it.
+  func begin(toward target: ViewLevel, byKey: Bool = true) {
     let now = DispatchTime.now().uptimeNanoseconds
-    let stamp = (NSApp as? BarestateApplication)?.keyDownAt ?? 0
+    let stamp = byKey ? (NSApp as? BarestateApplication)?.keyDownAt ?? 0 : 0
     asked = (now - stamp < 1_000_000_000 ? stamp : now, target)
   }
 

@@ -184,7 +184,9 @@ extension AppController {
   /// `test.ui.zoomPill`: the overview's zoom pill, null in the other presentations. Frames are
   /// window points from the top left.
   func zoomPillState() -> JSON {
-    guard let view = root?.canvasView, !view.isHiddenOrHasHiddenAncestor else { return .null }
+    guard let view = root?.canvasView, !view.zoomPill.isHiddenOrHasHiddenAncestor else {
+      return .null
+    }
     let pill = view.zoomPill
     func control(_ button: ChromeButton) -> JSON {
       ["label": .string(button.accessibilityLabel() ?? ""), "frame": windowRect(button)]

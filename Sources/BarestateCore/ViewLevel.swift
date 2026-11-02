@@ -21,4 +21,11 @@ public enum ViewLevel: String, Sendable, Equatable {
   public func canToggleFullWindow(hasSelection: Bool) -> Bool {
     self != .overview || hasSelection
   }
+
+  /// Where leaving Full window goes: back to the overview when the page was maximized from a
+  /// card, else one level out to the focused page.
+  public func exited(maximizedFromOverview: Bool) -> ViewLevel {
+    guard self == .fullWindow else { return self }
+    return maximizedFromOverview ? .overview : .focused
+  }
 }

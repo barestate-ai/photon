@@ -6,18 +6,38 @@ import BarestateCore
 @MainActor
 extension AppController {
   static let firstRunHint =
-    "click to open · double-click for full window · pinch out or ⌘⇧\\ for the overview"
+    "click a page to open it · hover it and click ⤢ to maximize · pinch out or ⌘⇧\\ for the overview"
 
   /// ⌘↩: opens the focused page in Full window, the selected card from the overview, or leaves it.
   @objc func toggleFullWindow() {
     guard viewLevel.canToggleFullWindow(hasSelection: root?.canvasView?.selection != nil) else {
       return
     }
-    toggles.begin(toward: viewLevel == .fullWindow ? .focused : .fullWindow)
+    toggles.begin(
+      toward: viewLevel == .fullWindow
+        ? viewLevel.exited(maximizedFromOverview: maximizedFromOverview) : .fullWindow)
     switch viewLevel {
     case .overview: root?.canvasView?.selection.map(openInFullWindow(node:))
     case .focused: setFullWindow(true)
-    case .fullWindow: setFullWindow(false)
+    case .fullWindow: exitFullWindow()
+    }
+  }
+
+  /// A card's Maximize control or menu item: its page straight to Full window.
+  func maximize(node id: String) {
+    toggles.begin(toward: .fullWindow, byKey: false)
+    openInFullWindow(node: id)
+  }
+
+  /// Leaves Full window the way it was entered: a page maximized from its card shrinks back to
+  /// that card in the overview, any other goes back to the focused page.
+  func exitFullWindow(byKey: Bool = true) {
+    let level = viewLevel.exited(maximizedFromOverview: maximizedFromOverview)
+    toggles.begin(toward: level, byKey: byKey)
+    if level == .overview {
+      showOverview()
+    } else {
+      setFullWindow(false)
     }
   }
 
@@ -46,10 +66,19 @@ extension AppController {
   }
 
   /// A card's page, opened in Full window: from the overview a double-click or ⌘↩ on the selection.
-  /// A closed page comes back as a focused page.
+  /// A closed page is reopened into Full window.
   func openInFullWindow(node id: String) {
     guard let node = canvas.graph.nodes.first(where: { $0.id == id }) else { return }
-    guard let tabId = node.tabId, tab(id: tabId) != nil else { return focusNode(id) }
+    guard let tabId = node.tabId, tab(id: tabId) != nil else {
+      let fromOverview = presentation == .overview
+      camera.toPage(of: id) {
+        fillsWindow = true
+        maximizedFromOverview = fromOverview
+        openTab(url: node.url, title: node.title, origin: .reopen(node: node.id))
+        if presentation != .focused { fillsWindow = false }
+      }
+      return notify("Reopened closed page")
+    }
     openInFullWindow(tab: tabId)
   }
 
@@ -60,8 +89,10 @@ extension AppController {
       // Already filling the window, the choice still hands the keyboard back to the page.
       return fillsWindow ? activate(id) : setFullWindow(true)
     }
+    let fromOverview = presentation == .overview
     let commit = { [self] in
       fillsWindow = true
+      maximizedFromOverview = fromOverview
       activate(id)
       if presentation != .focused { fillsWindow = false }
     }

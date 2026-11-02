@@ -247,7 +247,7 @@ class EntryTests(FullWindowCase):
             self.assertFalse(self.ui()["launcher"]["open"])
             self.unchanged(tabs[1], before, requests, browsers)
             self.key("Return", "cmd")
-            self.wait_level("focused")
+            self.wait_level(start)
 
 
     def choose_in_pages(self, query, tab):
@@ -509,7 +509,7 @@ class DiscoverabilityTests(FullWindowCase):
     def test_the_first_empty_canvas_shows_one_hint_once(self):
         """VAL-VIEW-008"""
         full = self.full()
-        text = "click to open · double-click for full window · pinch out or ⌘⇧\\ for the overview"
+        text = "click a page to open it · hover it and click ⤢ to maximize · pinch out or ⌘⇧\\ for the overview"
         self.assertTrue(full["hint"]["visible"])
         self.assertEqual(full["hint"]["text"], text)
         self.assertTrue(os.path.exists(os.path.join(self.data_dir, "first-run-hint")))

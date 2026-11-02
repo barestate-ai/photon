@@ -26,6 +26,8 @@ extension AppController {
     let rest = String(id[id.index(after: colon)...])
     switch id[..<colon] {
     case "launcherRow": return root.launcher.rowView(id: rest)
+    case "maximize": return maximizeView(rest)
+    case "cardMenu": return cardMenuView(rest)
     case "node":
       return presentation == .focused
         ? root.focusContext.probe(for: rest) : root.canvasView?.probe(for: rest)
@@ -34,6 +36,7 @@ extension AppController {
   }
 
   func chromeId(of view: NSView) -> String? {
+    if let button = view as? MaximizeButton { return "maximize:\(button.node)" }
     if let row = view as? LauncherRowView { return "launcherRow:\(row.rowId)" }
     if let known = viewsById.first(where: { $0.value === view && !($0.value is TabContentView) }) {
       return known.key

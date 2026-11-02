@@ -25,6 +25,18 @@ final class NodeCard {
   static let captionTop = PageNode.cardHeight + 4
   /// The "Open" chip a hovered card shows at its top right, in card points.
   static let chipFrame = CGRect(x: PageGraph.nodeWidth - 8 - 48, y: 8, width: 48, height: 22)
+  /// The Maximize control beside it, to its left, in card points.
+  static let maximizeFrame = CGRect(
+    x: chipFrame.minX - 4 - chipFrame.height, y: chipFrame.minY, width: chipFrame.height,
+    height: chipFrame.height)
+
+  /// `frame`, given in card points, as it is drawn on a card shown at `card`.
+  static func place(_ frame: CGRect, in card: CGRect) -> CGRect {
+    let scale = card.width / PageGraph.nodeWidth
+    return CGRect(
+      x: card.minX + frame.minX * scale, y: card.minY + frame.minY * scale,
+      width: frame.width * scale, height: frame.height * scale)
+  }
 
   let id: String
   let layer = CALayer()
