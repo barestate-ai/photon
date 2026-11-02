@@ -147,7 +147,9 @@ final class CardMenuView: NSView {
   }
 
   /// Everything outside the panel belongs to this view while the menu is open: a click there
-  /// closes it, and a right-click goes on to open the menu of the card under it.
+  /// closes it, and a right-click goes on to open the menu of the card under it. A click that
+  /// lands on a live page only closes the menu: this overlay hides the page from
+  /// `BarestateApplication.sendEvent`, which would otherwise take control back for the person.
   override func hitTest(_ point: NSPoint) -> NSView? {
     guard isOpen else { return nil }
     let local = convert(point, from: superview)
@@ -162,6 +164,7 @@ final class CardMenuView: NSView {
     guard let root = superview,
       let below = root.hitTest(root.convert(event.locationInWindow, from: nil))
     else { return }
+    if BarestateApplication.tabId(containing: below) != nil { return }
     below.rightMouseDown(with: event)
   }
 }

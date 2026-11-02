@@ -11,6 +11,8 @@ from test_view_full_window import FullWindowCase
 
 EMPTY = {"x": 720, "y": 760}
 MENU_TITLES = ["Open", "Maximize", "Close Page"]
+SESSION = "menu-dismiss"
+PAGE_POINT = {"x": 400, "y": 400}
 
 
 def rect_distance(a, b):
@@ -504,6 +506,44 @@ class MenuTests(MaxCase):
         self.wait_level("full-window")
         self.assertEqual(self.active_id(), tab)
         self.assert_unchanged(tab, before)
+
+    def control(self, tab):
+        state = next(t for t in self.ui()["tabs"] if t["id"] == tab)
+        return state["epoch"], state["controller"]
+
+    def release(self, tab):
+        try:
+            self.call("handoff", {"sessionId": SESSION, "tabId": tab})
+        except bs.RpcError:
+            pass  # the human click already took over
+
+    def downs(self, tab):
+        return self.evaluate("window.__downs", tab)
+
+    def test_a_click_that_closes_the_menu_over_a_live_page_never_reaches_it(self):
+        """The takeover boundary: a dismissal is consumed like a native menu's, an ordinary
+        click still takes over."""
+        opener = self.open_page("Opener", "popups.html")
+        self.popups(opener, 2)
+        self.show_page()
+        neighbour = (self.focus_state()["left"] + self.focus_state()["right"])[0]
+        granted = self.call("request_control", {"sessionId": SESSION, "tabId": opener})
+        if granted["state"] != "granted":
+            self.call("control.decide", {"requestId": granted["requestId"], "allow": True})
+        self.addCleanup(self.release, opener)
+        self.evaluate("window.__downs = 0; addEventListener('mousedown', "
+                      "() => { window.__downs += 1 }, true)", opener)
+        epoch, controller = self.control(opener)
+        self.assertEqual(controller, "agent")
+        for button in ("right", "left"):
+            self.open_menu(neighbour["id"])
+            self.call("test.click", {"target": opener, "button": button, **PAGE_POINT})
+            bs.wait_until(lambda: not self.card_menu()["open"], what=f"the menu closed by a {button} click")
+            self.assertEqual(self.downs(opener), 0, button)
+            self.assertEqual(self.control(opener), (epoch, "agent"), button)
+        self.call("test.click", {"target": opener, **PAGE_POINT})
+        bs.wait_until(lambda: self.downs(opener) == 1, what="the ordinary click to reach the page")
+        self.assertEqual(self.control(opener), (epoch + 1, "human"))
 
 
 class WordingTests(MaxCase):
