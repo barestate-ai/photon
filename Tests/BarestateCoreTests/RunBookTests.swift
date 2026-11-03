@@ -28,6 +28,28 @@ struct RunBookTests {
     #expect(RunState.waitingApproval.rawValue == "waiting-approval")
   }
 
+  @Test func theAnswerIsKeptOnTheMoveThatEndsTheRunAndNotOverwrittenAfterwards() {
+    var book = RunBook()
+    let id = book.start(prompt: "compare Kyoto and Tokyo", origin: .mac, ownerTabId: nil)!.id
+    #expect(book.runs[0].answer == nil && !book.runs[0].refused)
+    book.move(id, to: .running)
+    #expect(book.runs[0].answer == nil)
+    book.move(id, to: .completed, answer: "Kyoto is older.", refused: false)
+    book.move(id, to: .stopped, reason: "stopped", answer: "late", refused: true)
+    #expect(book.runs[0].state == .completed)
+    #expect(book.runs[0].answer == "Kyoto is older." && !book.runs[0].refused)
+    var other = RunBook()
+    let said = other.start(prompt: "go", origin: .mac, ownerTabId: nil)!.id
+    other.move(said, to: .running)
+    other.move(said, to: .failed, reason: RunOutcome.declined, answer: "No.", refused: true)
+    #expect(other.runs[0].answer == "No." && other.runs[0].refused)
+    var unconfirmed = RunBook()
+    let sent = unconfirmed.start(prompt: "go", origin: .mac, ownerTabId: nil)!.id
+    unconfirmed.move(sent, to: .running)
+    unconfirmed.move(sent, to: .failed, reason: "a write ended failed", answer: "Done, I sent it.")
+    #expect(unconfirmed.runs[0].answer == nil)
+  }
+
   @Test func theStatusLabelNamesWhatTheTaskIsDoingUntilItEnds() {
     #expect(RunState.pending.statusLabel == "connecting")
     #expect(RunState.running.statusLabel == "working")

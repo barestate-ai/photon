@@ -375,7 +375,10 @@ struct LauncherRankingTests {
     #expect(row(.waitingApproval)?.subtitle == "Muse · waiting for approval")
     #expect(row(.stopped, "taken-over")?.subtitle == "Muse · stopped · taken-over")
     #expect(row(.stopped, "stopped")?.subtitle == "Muse · stopped")
-    #expect(row(.failed, "needs-human")?.subtitle == "Muse · failed · needs-human")
+    #expect(
+      row(.failed, "needs-human")?.subtitle == "Muse · failed · The task could not be finished.")
+    #expect(
+      row(.failed, "run-cap")?.subtitle == "Muse · failed · The task reached its spending limit.")
     #expect(row(.failed)?.status == .ready)
     #expect(row(.running)?.title == "Compare stays")
     let done = row(.completed)
@@ -383,6 +386,21 @@ struct LauncherRankingTests {
     #expect(done?.subtitle == "Open the result")
     #expect(done?.status == .success)
     #expect(done?.enabled == true)
+  }
+
+  @Test func aCompletedRunWithAnAnswerShowsItsStartOnOneLineInTheRow() {
+    var answered = run(.completed)
+    answered.answer = "Kyoto is older.\n\nTokyo is   bigger."
+    func completed(_ run: Run) -> LauncherRow? {
+      rank("", withRuns([run])).first { $0.kind == .run }
+    }
+    #expect(completed(answered)?.subtitle == "Kyoto is older. Tokyo is bigger.")
+    #expect(completed(answered)?.title == "Compare stays ready")
+    #expect(completed(answered)?.actionLabel == "Open the result")
+    answered.answer = String(repeating: "word ", count: 80)
+    let long = completed(answered)?.subtitle ?? ""
+    #expect(long.count == 141 && long.hasSuffix("…"))
+    #expect(completed(run(.completed))?.subtitle == "Open the result")
   }
 
   @Test func runRowsListOnlyForAnEmptyQueryNewestFirstAndOpenTheirOwnRun() {

@@ -12,7 +12,7 @@ Photon, by Barestate, is a native macOS browser. It was called "Barestate Browse
 - Muse is Meta's agent. It acts in the user's real logged-in session, from the Mac or from a phone. The person can take over at any moment (any real input in the page fences the agent). Sensitive actions (delete, purchase, password field, submit) wait for "Allow once". Every action leaves a verified record: a before and after check, not just "the click was sent".
 - Atom is a small local model bundled as an optional install. It turns "click Save" plus a screenshot into a point, before Photon asks Muse. It was built before this project (`barestate-ai/atom-inference`). Photon vendors its runtime in `runtime/atom/` and ships the weights as a separate archive.
 
-The product description is in `README.md`. The plan is `PLAN.md`. `HACKATHON.md` separates what existed before the mission from what was built. `DECISIONS.md` is the decision log (D1 to D80) and the place to record new decisions.
+The product description is in `README.md`. The plan is `PLAN.md`. `HACKATHON.md` separates what existed before the mission from what was built. `DECISIONS.md` is the decision log (D1 to D81) and the place to record new decisions.
 
 ## 2. Current state (2026-11-02)
 
@@ -279,4 +279,4 @@ Product and code:
 - Add checks with real device input: a physical mouse wheel for ⌘-scroll, drag-pan and the Maximize controls, and a trackpad pinch.
 - Sign with a Developer ID certificate and notarize. The app is ad-hoc signed today, so the first launch from a download needs "Open Anyway" (README, Install).
 - Re-run the restore benchmark at low load on the next release, because its headroom is the thinnest.
-- Keep recording changes in `DECISIONS.md` with the next free D number (D81), and keep `BENCH.md` figures labelled by the build they came from.
+- Keep recording changes in `DECISIONS.md` with the next free D number (D82), and keep `BENCH.md` figures labelled by the build they came from.

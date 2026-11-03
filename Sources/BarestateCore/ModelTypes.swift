@@ -76,11 +76,20 @@ public struct ModelResponse: Sendable {
   /// a function call that cannot be run. Such a turn is never the model ending.
   public var incompleteReason: String?
 
+  private var contentParts: [JSON] {
+    output.filter { $0["type"]?.string == "message" }.flatMap { $0["content"]?.array ?? [] }
+  }
+
   public var text: String {
-    output.filter { $0["type"]?.string == "message" }
-      .flatMap { $0["content"]?.array ?? [] }
-      .compactMap { $0["type"]?.string == "output_text" ? $0["text"]?.string : nil }
+    contentParts.compactMap { $0["type"]?.string == "output_text" ? $0["text"]?.string : nil }
       .joined()
+  }
+
+  /// The words of the response's `refusal` content parts: nil when the provider sent none, so
+  /// the model declining is only ever read from the structured part, never from its wording.
+  public var refusal: String? {
+    let parts = contentParts.filter { $0["type"]?.string == "refusal" }
+    return parts.isEmpty ? nil : parts.compactMap { $0["refusal"]?.string }.joined()
   }
 
   public var functionCalls: [FunctionCall] {

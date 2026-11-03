@@ -175,7 +175,7 @@ class StateTests(TaskCase):
         document = self.document(page["id"])
         wanted = {"pending": "connecting", "running": "working",
                   "waiting-approval": "waiting for approval", "stopped": "stopped",
-                  "failed": "failed", "completed": "completed"}
+                  "failed": "failed · no key", "completed": "completed"}
         seen = {}
 
         def check(run_id, state):
@@ -198,7 +198,9 @@ class StateTests(TaskCase):
                 self.assertEqual((row["title"], row["subtitle"], row["status"]),
                                  (f"{listed['prompt']} ready", "Open the result", "success"))
             else:
-                self.assertEqual(row["subtitle"][:len(label)], label)
+                # The card carries a few words on why; the row carries the sentence.
+                shown = "Muse · failed · No model API key is set." if state == "failed" else label
+                self.assertEqual(row["subtitle"][:len(shown)], shown)
             if state in ("pending", "running", "waiting-approval"):
                 self.assertEqual(state_ui["rows"][0]["title"], f"Stop {listed['prompt']}")
                 self.assertEqual(row["status"], "loading")
@@ -732,11 +734,15 @@ class LiveTaskTests(TaskCase):
         self.show("focused")
         self.open_launcher()
         row = self.run_rows()[0]
-        self.assertEqual((row["title"], row["subtitle"]), (f"{TRIVIAL} ready", "Open the result"))
+        self.assertEqual(row["title"], f"{TRIVIAL} ready")
         self.screenshot("task-live-ready")
         self.move_to(row)
         self.key("Return")
-        bs.wait_until(lambda: self.activity().get("open"), what="the activity view")
+        view = bs.wait_until(lambda: self.activity() if self.activity().get("open") else None,
+                             what="the activity view")
+        # The model's closing reply is shown in the view, and its start is the row's subtitle.
+        self.assertIn("ready", (view["answer"] or "").lower(), view)
+        self.assertEqual(row["subtitle"], " ".join(view["answer"].split()))
         with open(os.environ["BARESTATE_SPEND_LOG"]) as spend:
             ledger = json.load(spend)
         added = ledger["entries"][seen:]

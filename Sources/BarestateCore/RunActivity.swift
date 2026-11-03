@@ -1,8 +1,15 @@
 import Foundation
 
 extension Run {
-  /// The words a page or node carries while this run owns it.
-  public var museLabel: String { "Muse · \(state.statusLabel)" }
+  /// Why a failed run failed, as a sentence; nil in any other state.
+  public var failure: String? { state == .failed ? RunOutcome.plainReason(reason) : nil }
+
+  /// The words a page or node carries while this run owns it. A failed run adds a few words on
+  /// why, short enough for the overview card; `failure` is the whole sentence.
+  public var museLabel: String {
+    let why = state == .failed ? RunOutcome.shortReason(reason) : nil
+    return "Muse · \(state.statusLabel)" + (why.map { " · \($0)" } ?? "")
+  }
 }
 
 extension RunBook {
@@ -27,6 +34,10 @@ public struct RunActivity: Equatable, Sendable {
   public let prompt: String
   public let status: String
   public let reason: String?
+  /// What follows the status: the sentence for a failure, else the recorded reason.
+  public let because: String?
+  /// The model's closing reply, when it gave one.
+  public let answer: String?
   public let canStop: Bool
   public let entries: [Entry]
   public let waiting: [String]
@@ -42,6 +53,8 @@ public struct RunActivity: Equatable, Sendable {
     prompt = run.prompt
     status = run.state.statusLabel
     reason = run.reason
+    because = run.failure ?? run.reason
+    answer = run.answer
     canStop = run.state.isInProgress
     entries = run.steps.map { step in
       let parts = [step.tabId.flatMap { pages[$0] }, step.state, step.reason]

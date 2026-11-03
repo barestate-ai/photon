@@ -157,6 +157,12 @@ public enum LauncherRanking {
     return rows
   }
 
+  /// The start of an answer on one line, to fit a row.
+  private static func glimpse(_ answer: String) -> String {
+    let line = answer.split(whereSeparator: \.isWhitespace).joined(separator: " ")
+    return line.count > 140 ? String(line.prefix(140)) + "…" : line
+  }
+
   private static func runRow(_ run: Run) -> LauncherRow {
     var row = LauncherRow(
       section: "Tasks", kind: .run, title: run.prompt, subtitle: "Muse · \(run.state.statusLabel)",
@@ -169,9 +175,13 @@ public enum LauncherRanking {
     case .running, .waitingApproval:
       row.status = .loading
     case .completed:
-      (row.title, row.subtitle, row.status) = ("\(run.prompt) ready", "Open the result", .success)
+      (row.title, row.subtitle, row.status) = (
+        "\(run.prompt) ready", run.answer.map(glimpse) ?? "Open the result", .success
+      )
     case .stopped, .failed:
-      if let reason = run.reason, reason != run.state.statusLabel { row.subtitle += " · \(reason)" }
+      if let because = run.failure ?? run.reason, because != run.state.statusLabel {
+        row.subtitle += " · \(because)"
+      }
     }
     return row
   }

@@ -108,7 +108,7 @@ struct AgentLoopTests {
     ])
     let harness = Harness()
     let end = await harness.run(wire)
-    #expect(end == .ended)
+    #expect(end == .ended(text: "All done", refused: false))
     #expect(harness.executed == ["observe"])
     #expect(wire.bodies.count == 2)
     let first = wire.bodies[0]
@@ -134,7 +134,7 @@ struct AgentLoopTests {
       reply("resp_1", calls: [("a", "tabs"), ("b", "observe")]), reply("resp_2", text: "done"),
     ])
     let harness = Harness()
-    #expect(await harness.run(wire) == .ended)
+    #expect(await harness.run(wire) == .ended(text: "done", refused: false))
     #expect(harness.executed == ["tabs", "observe"])
     let outputs = wire.bodies[1]["input"]?.array?.compactMap { $0["call_id"]?.string }
     #expect(outputs == ["call_a", "call_b"])
@@ -231,8 +231,40 @@ struct AgentLoopTests {
   @Test func theModelStoppingBeforeAnyToolIsAnEndedRun() async {
     let wire = Wire([reply("resp_1", text: "Nothing to do")])
     let harness = Harness()
-    #expect(await harness.run(wire) == .ended)
+    #expect(await harness.run(wire) == .ended(text: "Nothing to do", refused: false))
     #expect(harness.executed.isEmpty)
+  }
+
+  @Test func theClosingReplyComesBackTrimmedAndNilWhenTheModelSaidNothing() async {
+    let wire = Wire([reply("resp_1", text: "  Kyoto is older.  ")])
+    #expect(await Harness().run(wire) == .ended(text: "Kyoto is older.", refused: false))
+    let blank = Wire([reply("resp_1", text: " ")])
+    #expect(await Harness().run(blank) == .ended(text: nil, refused: false))
+  }
+
+  @Test func aStructuredRefusalPartIsTheRefusalAndItsWordsTheText() async {
+    let refusal = """
+      {"id":"resp_1","model":"muse-spark-1.3","status":"completed","output":[{"type":"message",
+      "role":"assistant","content":[{"type":"refusal","refusal":"I can't help with that."}]}],
+      "usage":{"input_tokens":10,"output_tokens":5}}
+      """
+    let end = await Harness().run(Wire([refusal]))
+    #expect(end == .ended(text: "I can't help with that.", refused: true))
+  }
+
+  @Test func aRefusalPartWithNoWordsStillRefusesAndFallsBackToTheReplyText() async {
+    let empty = """
+      {"id":"resp_1","model":"muse-spark-1.3","status":"completed","output":[{"type":"message",
+      "role":"assistant","content":[{"type":"refusal","refusal":""},
+      {"type":"output_text","text":"Not this one."}]}],
+      "usage":{"input_tokens":10,"output_tokens":5}}
+      """
+    #expect(await Harness().run(Wire([empty])) == .ended(text: "Not this one.", refused: true))
+  }
+
+  @Test func wordsThatSoundLikeARefusalAreNotOneWithoutTheStructuredPart() async {
+    let wire = Wire([reply("resp_1", text: "I cannot do this. Sorry.")])
+    #expect(await Harness().run(wire) == .ended(text: "I cannot do this. Sorry.", refused: false))
   }
 
   @Test(arguments: [reasoningOnly, brokenCall])
@@ -260,7 +292,9 @@ struct AgentLoopTests {
       (reply("resp_5", text: "All done"), 200),
     ])
     let harness = Harness()
-    #expect(await harness.run(wire, ledger: SpendLedger(path: path)) == .ended)
+    #expect(
+      await harness.run(wire, ledger: SpendLedger(path: path))
+        == .ended(text: "All done", refused: false))
     #expect(wire.bodies.count == 5)
     #expect(harness.replayed == [3])
 
@@ -346,6 +380,6 @@ struct AgentLoopTests {
       {"id":"resp_1","model":"muse-spark-1.3","status":"completed","output":[{"type":"reasoning"}],
       "usage":{"input_tokens":10,"output_tokens":5}}
       """
-    #expect(await Harness().run(Wire([body])) == .ended)
+    #expect(await Harness().run(Wire([body])) == .ended(text: nil, refused: false))
   }
 }

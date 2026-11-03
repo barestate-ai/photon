@@ -64,9 +64,13 @@ final class RunController {
 
   /// Ends a run that has not ended; the loop sees it before its next model call or tool.
   @discardableResult
-  func end(_ id: String, _ state: RunState, reason: String?) -> Bool {
+  func end(
+    _ id: String, _ state: RunState, reason: String?, answer: String? = nil, refused: Bool = false
+  ) -> Bool {
     _ = withinCap(id)  // the last response's cost belongs in the ended run's total
-    guard book.move(id, to: state, reason: reason) else { return false }
+    guard book.move(id, to: state, reason: reason, answer: answer, refused: refused) else {
+      return false
+    }
     tasks[id]?.cancel()
     tasks[id] = nil
     let session = session(id)
@@ -214,15 +218,15 @@ final class RunController {
     switch end {
     case .stopped: break
     case .failed(let reason): self.end(id, .failed, reason: reason)
-    case .ended:
+    case .ended(let text, let refused):
       var writes: [(state: ActionState, reason: String?)] = []
       for row in acts[id] ?? [] {
         if let action = await app?.database()?.action(id: row) {
           writes.append((action.state, action.reason))
         }
       }
-      let outcome = RunOutcome.conclude(modelEnded: true, writes: writes)
-      self.end(id, outcome.state, reason: outcome.reason)
+      let outcome = RunOutcome.conclude(modelEnded: true, writes: writes, refused: refused)
+      self.end(id, outcome.state, reason: outcome.reason, answer: text, refused: refused)
     }
   }
 

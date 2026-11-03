@@ -6,8 +6,9 @@ import Foundation
 /// chain; what a tool does, and what a run is worth, belong to the caller.
 public enum AgentLoop {
   public enum End: Sendable, Equatable {
-    /// The model stopped asking for tools.
-    case ended
+    /// The model stopped asking for tools. `text` is its closing reply (its `refusal` part when it
+    /// declined), nil when it said nothing; `refused` is true only for a structured refusal.
+    case ended(text: String?, refused: Bool)
     /// `live` said the run is over (Stop, takeover): nothing more was sent or run.
     case stopped
     case failed(String)
@@ -129,7 +130,12 @@ public enum AgentLoop {
       guard live() else { return .stopped }
       guard response.incompleteReason == nil else { return .failed(incompleteTurn) }
       let calls = response.functionCalls
-      if calls.isEmpty { return .ended }
+      if calls.isEmpty {
+        let refusal = response.refusal
+        let said = refusal.flatMap { $0.isEmpty ? nil : $0 } ?? response.text
+        let text = said.trimmingCharacters(in: .whitespacesAndNewlines)
+        return .ended(text: text.isEmpty ? nil : text, refused: refusal != nil)
+      }
       transcript.add(output: response.output)
       input = []
       for call in calls {
