@@ -133,4 +133,57 @@ struct VerifierTests {
         reply(status: "completed", text: #"{"success":true,"reason":"ok"}"#), ledger: ledger)
         == .success("ok"))
   }
+
+  /// Answers each request in turn with the next status; the last one repeats. The first 2xx body
+  /// is a verdict.
+  private final class Replies: @unchecked Sendable {
+    private let lock = NSLock()
+    private var statuses: [Int]
+    private(set) var count = 0
+
+    init(_ statuses: [Int]) { self.statuses = statuses }
+
+    var transport: ModelTransport {
+      { [self] request, _ in
+        let status = lock.withLock { () -> Int in
+          count += 1
+          return statuses.count > 1 ? statuses.removeFirst() : statuses[0]
+        }
+        let body =
+          status == 200
+          ? #"{"id":"resp_1","model":"muse-spark-1.3","status":"completed","output":[{"type":"message","role":"assistant","content":[{"type":"output_text","text":"{\"success\":true,\"reason\":\"ok\"}"}]}],"usage":{"input_tokens":10,"output_tokens":5}}"#
+          : "{}"
+        let response = HTTPURLResponse(
+          url: request.url!, statusCode: status, httpVersion: nil, headerFields: nil)!
+        return (Data(body.utf8), response)
+      }
+    }
+  }
+
+  private func verify(_ replies: Replies) async -> ModelVerdict {
+    let client = ModelClient(
+      environment: ["MODEL_API_KEY": "sk-test-secret-1234"], envFile: nil, keychain: { nil },
+      ledger: SpendLedger(path: NSTemporaryDirectory() + "spend-\(UUID().uuidString).json"),
+      transport: replies.transport)
+    return await Verifier.verify(
+      intent: "click", before: Data([1]), after: Data([2]), client: client)
+  }
+
+  @Test func aProviderHiccupIsTriedOnceMoreBeforeTheModelIsUnavailable() async {
+    let hiccup = Replies([503, 200])
+    #expect(await verify(hiccup) == .success("ok"))
+    #expect(hiccup.count == 2)
+    let rateLimited = Replies([429, 200])
+    #expect(await verify(rateLimited) == .success("ok"))
+    #expect(rateLimited.count == 2)
+  }
+
+  @Test func theVerifierTriesOnlyOnceMoreAndOnlyForAHiccup() async {
+    let down = Replies([502])
+    #expect(await verify(down) == .unavailable("server"))
+    #expect(down.count == 2)
+    let wrong = Replies([400])
+    #expect(await verify(wrong) == .unavailable("rejected"))
+    #expect(wrong.count == 1)
+  }
 }

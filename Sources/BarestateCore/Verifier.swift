@@ -101,9 +101,16 @@ public enum Verifier {
   public static func verify(
     intent: String, before: Data, after: Data, client: ModelClient
   ) async -> ModelVerdict {
+    let ask = request(intent: intent, before: before, after: after)
     do {
-      let response = try await client.call(
-        request(intent: intent, before: before, after: after), source: "verify")
+      let response: ModelResponse
+      do {
+        response = try await client.call(ask, source: "verify")
+      } catch let error as ModelError where error.isTransient {
+        // A provider hiccup is not the act's failure; one more try, as the agent loop does.
+        try await Task.sleep(for: .seconds(1))
+        response = try await client.call(ask, source: "verify")
+      }
       return verdict(response: response)
     } catch let error as ModelError {
       return .unavailable(error.code)
