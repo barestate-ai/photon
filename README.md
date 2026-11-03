@@ -38,7 +38,7 @@ security add-generic-password -s meta-model-api -a "$USER" -w
 
 The command prompts for the key, so it never appears on a command line or in your shell history. Photon reads the Keychain item `meta-model-api`; macOS may ask you to allow it. Settings → Model names this too. Without a key the browser works and "Start task" explains why Muse is unavailable.
 
-Photon looks for the key in this order: `MODEL_API_KEY` in the environment, then in the `.env` file (the one named by `BARESTATE_ENV_FILE`, else `.env` in the working directory), then the Keychain. From a checkout, put `MODEL_API_KEY=...` in `.env` at the repo root (git ignores it).
+Photon looks for the key in this order: `MODEL_API_KEY` in the environment, then in the `.env` file (the one named by `BARESTATE_ENV_FILE`, else `.env` in the working directory), then the Keychain. From a checkout, run `cp -n env.example .env` (it keeps an existing `.env`) and set `MODEL_API_KEY=` in it at the repo root (git ignores it). The key must be named exactly `MODEL_API_KEY`; a name such as `MUSE_API_KEY` is ignored, so rename it if that is what your `.env` has.
 
 ## Barestate Muse (no key of your own)
 

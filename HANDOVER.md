@@ -161,7 +161,7 @@ The benches are not re-run on a refresh by default. BENCH.md says which build ea
 Photon needs a model key for Muse. It looks in this order, and the first hit wins:
 
 1. `MODEL_API_KEY` in the environment.
-2. `MODEL_API_KEY` in the env file: the file named by `BARESTATE_ENV_FILE`, else `.env` in the working directory. In a checkout, `.env` is git-ignored. Never print, log or commit it.
+2. `MODEL_API_KEY` in the env file: the file named by `BARESTATE_ENV_FILE`, else `.env` in the working directory. In a checkout, `.env` is git-ignored. Never print, log or commit it. The name must be exactly `MODEL_API_KEY`; `env.example` is the template.
 3. The Keychain generic password `meta-model-api`. An app opened from the Dock has no `.env`, so this is how an installed app gets a key:
 
    ```sh
