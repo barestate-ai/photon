@@ -526,13 +526,13 @@ class OutageTests(TaskCase):
         retry = next(r for r in state["rows"] if r["kind"] == "retry")
         search = next(r for r in state["rows"] if r["kind"] == "search")
         self.assertEqual((task["enabled"], task["subtitle"]),
-                         (False, "Muse is unavailable. Web search still works."))
+                         (False, "Muse cannot be reached. Web search still works."))
         self.assertEqual((state["active"], search["hint"], state["fieldText"]),
                          (search["id"], True, KYOTO))
         tree = self.tree()
         node = next(n for n in tree if n.get("label", "").startswith("Start task") and n["role"] == "AXButton")
         self.assertEqual((node["enabled"], node["description"]),
-                         (False, "Muse is unavailable. Web search still works."))
+                         (False, "Muse cannot be reached. Web search still works."))
         self.assertTrue(next(n for n in tree if n.get("label", "").startswith("Retry"))["enabled"])
         # Enter on the dimmed row does nothing; so does a click on it.
         self.call("test.click", {"target": f"launcherRow:{task['id']}"})
@@ -669,7 +669,7 @@ class FidelityTests(TaskCase):
         rows = {r["kind"]: r for r in state["rows"]}
         self.assertEqual(state["fieldText"], KYOTO)
         self.assertEqual((rows["startTask"]["state"], rows["startTask"]["subtitle"]),
-                         ("disabled", "Muse is unavailable. Web search still works."))
+                         ("disabled", "Muse cannot be reached. Web search still works."))
         self.assertEqual((state["active"], rows["search"]["hint"]), (rows["search"]["id"], True))
         self.assertGreater(self.count(image, rows["retry"]["frame"], PETROL, scale), 20)
         self.assertGreater(self.count(image, rows["search"]["frame"], SELECTION, scale, 6), 500)
