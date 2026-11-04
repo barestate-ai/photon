@@ -1,10 +1,10 @@
 # Hackathon: what existed and what was built
 
-Photon, by Barestate. Dates are commit dates from the original development history (UTC+7), which ran from 2026-10-28 to 2026-11-01.
+Photon, by Barestate. Dates are commit dates from the original development history (UTC+7), which ran from 2026-10-28 to 2026-11-01. Work after that, to 2026-11-02, is B17 to B21 below.
 
 ## About this repository's history
 
-The history published on GitHub is a clean re-commit made on 2026-11-01: about ten commits grouped by area, whose final tree is identical to the tree of the original history. The original 116-commit development history, from 2026-10-28 05:42 to 2026-11-01, is kept on the local branch `pre-photon-history` and is not published. The commit hashes cited in [DECISIONS.md](DECISIONS.md) and [BENCH.md](BENCH.md) refer to that original history, so they do not resolve in the published one.
+The history published on GitHub starts with a clean re-commit made on 2026-11-01: ten commits grouped by area (`604f47e` to `5926d01`), whose final tree is identical to the tree of the original history at that point. The original 116-commit development history, from 2026-10-28 05:42 to 2026-11-01, is kept on the local branch `pre-photon-history` and is not published. The commits after those ten (2026-11-01 and 2026-11-02) are ordinary history. The commit hashes cited in [DECISIONS.md](DECISIONS.md) and [BENCH.md](BENCH.md) for the earlier work refer to the original history, so they do not resolve in the published one; hashes from the Maximize work onward do.
 
 ## Existed before the mission (not built here)
 
@@ -17,7 +17,7 @@ The history published on GitHub is a clean re-commit made on 2026-11-01: about t
 
 Third-party parts: Chromium Embedded Framework 156.0.14 (fetched by `make vendor`, not stored in git), Manrope and Instrument Serif (SIL OFL, in `Resources/Fonts/`), the Muse models through Meta's API, and Tailscale Funnel for the public URL.
 
-## Built during the mission (2026-10-28 to 2026-10-31)
+## Built during the mission (2026-10-28 to 2026-11-02)
 
 Each item names the commits' dates and the decision entries. The ids are the ones [DEMO.md](DEMO.md) uses.
 
@@ -39,5 +39,10 @@ Each item names the commits' dates and the decision entries. The ids are the one
 | **B14 Docs and media** | README, DEMO, this file, the decision log, four screenshots and a 70 s video, all from the running app | 2026-10-31 | D66 |
 | **B15 The Barestate API** | A dependency-free Cloudflare Worker at `https://api.barestate.xyz` holding the Meta key as a Worker secret, with invite-code device registration (SHA-256 token hashes in KV), per-device and global daily USD caps, and a pass-through Muse proxy that never logs content | 2026-11-01 | D73 |
 | **B16 Barestate Muse in Photon** | Settings "Use Barestate Muse" with an invite code and Connect/Disconnect (token in the Keychain, a 0600 file under test hooks), the own-key-first route to Meta or the proxy, and the proxy's 402 as the call's refusal | 2026-11-01 | D74 |
+| **B17 Direct page selection** | An "Open pages" scope in the launcher, so a page can be picked from any number of open pages | 2026-11-01 | D75 |
+| **B18 Polish fixes** | The Muse trail flow follows the page in use; quitting stops the Atom installer | 2026-11-01 | D77 |
+| **B19 Full window** | A third view level: the same live page in a bigger frame, and native full screen | 2026-11-02 | D78 |
+| **B20 Mouse on the overview** | ⌘-scroll zoom, drag empty canvas to pan, a zoom pill, a lift on a dragged card | 2026-11-02 | D79 |
+| **B21 Maximize** | A Maximize control on every card, a right-click menu (Open, Maximize, Close Page), and a restore that returns to the card | 2026-11-02 | D80 |
 
 The mission's own fail triggers and their outcomes are in [DECISIONS.md](DECISIONS.md) (D1, D63, D40, D60, D66). Measured figures are only in [BENCH.md](BENCH.md).
