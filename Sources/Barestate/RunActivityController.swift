@@ -93,6 +93,8 @@ extension AppController {
       "open": true, "visible": .bool(!view.isHidden), "runId": .string(shown.runId),
       "prompt": .string(shown.prompt),
       "status": .string(shown.status), "reason": shown.reason.map { .string($0) } ?? .null,
+      "because": shown.because.map { .string($0) } ?? .null,
+      "answer": shown.answer.map { .string($0) } ?? .null,
       "entries": .array(
         shown.entries.map {
           ["id": .number(Double($0.id)), "text": .string($0.text), "detail": .string($0.detail)]

@@ -513,7 +513,7 @@ final class WindowRootView: NSView {
       room = max(
         80 * scale,
         (compactButton ? compactChip.frame.minY : commandButton.frame.minY) - 16
-          - target.minY - PageGraph.nodeHeight * CGFloat(canvasView?.zoomLevel ?? 1))
+          - target.minY - CGFloat(PageGraph.nodeHeight) * CGFloat(canvasView?.zoomLevel ?? 1))
     }
     let width = min(bounds.width - 16, wanted)
     let height = approvalCard.fit(width: width, maxHeight: room)

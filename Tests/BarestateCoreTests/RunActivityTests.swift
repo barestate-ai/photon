@@ -15,7 +15,7 @@ struct RunActivityTests {
     book.move("r1", to: .running)
     book.move("r3", to: .failed, reason: "no model API key")
     #expect(book.runs(ownedBy: "t1").map(\.id) == ["r1", "r3"])
-    #expect(book.runs(ownedBy: "t1").last?.museLabel == "Muse · failed")
+    #expect(book.runs(ownedBy: "t1").last?.museLabel == "Muse · failed · no key")
     #expect(book.runs(ownedBy: "t2").last?.museLabel == "Muse · connecting")
     #expect(book.runs(ownedBy: "t9").isEmpty && book.runs(ownedBy: nil).isEmpty)
   }
@@ -38,6 +38,50 @@ struct RunActivityTests {
     #expect(activity.reason == "a write ended failed: needs-human")
     #expect(activity.waiting == ["Click Pay"])
     #expect(!activity.canStop)
+  }
+
+  @Test func onlyAFailedRunPutsItsReasonInTheLabel() {
+    var book = book()
+    book.move("r1", to: .running)
+    #expect(book.runs[0].museLabel == "Muse · working")
+    book.move("r1", to: .stopped, reason: "taken-over")
+    #expect(book.runs[0].museLabel == "Muse · stopped")
+    book.move("r2", to: .completed, answer: "Kyoto is older.")
+    #expect(book.runs[1].museLabel == "Muse · completed")
+    #expect(book.runs[1].failure == nil)
+    var failed = RunBook()
+    _ = failed.start(prompt: "go", origin: .mac, ownerTabId: nil)
+    failed.move("r1", to: .running)
+    failed.move("r1", to: .failed, reason: "turn-limit")
+    #expect(failed.runs[0].museLabel == "Muse · failed · too many steps")
+    #expect(failed.runs[0].failure == RunOutcome.plainReason("turn-limit"))
+    var unknown = RunBook()
+    _ = unknown.start(prompt: "go", origin: .mac, ownerTabId: nil)
+    unknown.move("r1", to: .running)
+    unknown.move("r1", to: .failed, reason: "needs-human")
+    #expect(unknown.runs[0].museLabel == "Muse · failed")
+  }
+
+  @Test func theActivityCarriesTheAnswerAndTheSentenceThatFollowsTheStatus() {
+    var book = book()
+    book.move("r1", to: .running)
+    book.move("r1", to: .completed, answer: "Kyoto is older; Tokyo is bigger.")
+    book.move("r2", to: .running)
+    book.move("r2", to: .failed, reason: "model timed out")
+    let done = RunActivity(book.runs[0])
+    #expect(done.answer == "Kyoto is older; Tokyo is bigger.")
+    #expect(done.because == nil)
+    let failed = RunActivity(book.runs[1])
+    #expect(failed.answer == nil)
+    #expect(failed.because == "The model took too long to answer.")
+    #expect(failed.reason == "model timed out")
+  }
+
+  @Test func aStoppedRunKeepsItsRecordedReasonAfterTheStatus() {
+    var book = book()
+    book.move("r1", to: .running)
+    book.move("r1", to: .stopped, reason: "taken-over")
+    #expect(RunActivity(book.runs[0]).because == "taken-over")
   }
 
   @Test func aRunWithoutStepsHasNoEntriesAndAnActiveOneCanStop() {

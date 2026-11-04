@@ -14,6 +14,8 @@ final class RunActivityView: NSView {
   private let heading = NSTextField(labelWithString: "Muse activity")
   private let prompt = NSTextField(wrappingLabelWithString: "")
   private let status = NSTextField(labelWithString: "")
+  /// The model's closing reply; hidden when the run has none.
+  private let answer = NSTextField(wrappingLabelWithString: "")
   private let list = FlippedView()
   /// Step lines, kept across renders of one run so their text updates in place.
   private var rows: [NSTextField] = []
@@ -29,6 +31,7 @@ final class RunActivityView: NSView {
   private static let pad: CGFloat = 20
   private static let gap: CGFloat = 10
   private static let top: CGFloat = 96
+  private static let answerLines = 8
 
   override var isFlipped: Bool { true }
 
@@ -57,7 +60,11 @@ final class RunActivityView: NSView {
     prompt.lineBreakMode = .byTruncatingTail
     status.textColor = Design.muted
     status.lineBreakMode = .byTruncatingTail
-    for label in [heading, prompt, status] { label.setAccessibilityRole(.staticText) }
+    answer.textColor = Design.ink
+    answer.maximumNumberOfLines = Self.answerLines
+    answer.lineBreakMode = .byTruncatingTail
+    answer.isHidden = true
+    for label in [heading, prompt, status, answer] { label.setAccessibilityRole(.staticText) }
     stop.target = self
     stop.action = #selector(stopPressed)
     close.target = self
@@ -65,7 +72,9 @@ final class RunActivityView: NSView {
     stop.nextKeyView = close
     close.nextKeyView = stop
     addSubview(panel)
-    for view in [heading, prompt, status, list, stop, close] as [NSView] { panel.addSubview(view) }
+    for view in [heading, prompt, status, answer, list, stop, close] as [NSView] {
+      panel.addSubview(view)
+    }
     applyTextScale()
   }
 
@@ -80,6 +89,7 @@ final class RunActivityView: NSView {
     heading.font = Fonts.ui(15, weight: 500)
     prompt.font = Fonts.ui(13)
     status.font = Fonts.ui(12)
+    answer.font = Fonts.ui(13)
     stop.applyTextScale()
     close.applyTextScale()
     if let activity { render(activity) }
@@ -122,8 +132,11 @@ final class RunActivityView: NSView {
   func render(_ next: RunActivity, animated: Bool = true) {
     activity = next
     prompt.stringValue = next.prompt
-    let because = next.reason.flatMap { $0 == next.status ? nil : " · \($0)" } ?? ""
+    let because = next.because.flatMap { $0 == next.status ? nil : " · \($0)" } ?? ""
     status.stringValue = "Muse · \(next.status)\(because)"
+    answer.stringValue = next.answer ?? ""
+    answer.isHidden = next.answer == nil
+    answer.setAccessibilityLabel(next.answer.map { "Muse's reply: \($0)" })
     stop.isEnabled = next.canStop
     stop.setAccessibilityLabel(next.canStop ? "Stop \(next.prompt)" : "Stop")
     close.setAccessibilityLabel("Close Muse activity")
@@ -228,6 +241,13 @@ final class RunActivityView: NSView {
     status.frame = NSRect(
       x: pad, y: y, width: inner, height: ceil(status.intrinsicContentSize.height))
     y = status.frame.maxY + Self.gap
+    if !answer.isHidden {
+      let line = answer.font?.boundingRectForFont.height ?? 0
+      let most = ceil(line * CGFloat(Self.answerLines))
+      answer.frame = NSRect(
+        x: pad, y: y, width: inner, height: min(height(of: answer, width: inner), most))
+      y = answer.frame.maxY + Self.gap
+    }
 
     var inside: CGFloat = 0
     let all = rows + extras

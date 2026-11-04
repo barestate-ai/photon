@@ -50,6 +50,10 @@ public struct Run: Sendable, Equatable {
   public var state: RunState
   public var reason: String?
   public var costUSD = 0.0
+  /// What the model said when it ended the task; kept for the person to read, never logged.
+  public var answer: String?
+  /// The model's closing reply was a structured refusal.
+  public var refused = false
   public var steps: [RunStep] = []
 }
 
@@ -71,9 +75,13 @@ public struct RunBook: Sendable {
   }
 
   /// pending → running ⇄ waiting-approval → stopped | failed | completed. An ended run stays
-  /// ended with its first reason.
+  /// ended with its first reason and answer. A failed run keeps only a refusal's words: a reply
+  /// that reports a result cannot stand under a write that was not confirmed.
   @discardableResult
-  public mutating func move(_ id: String, to state: RunState, reason: String? = nil) -> Bool {
+  public mutating func move(
+    _ id: String, to state: RunState, reason: String? = nil, answer: String? = nil,
+    refused: Bool = false
+  ) -> Bool {
     guard let index = runs.firstIndex(where: { $0.id == id }), runs[index].state != state else {
       return false
     }
@@ -85,6 +93,8 @@ public struct RunBook: Sendable {
     }
     runs[index].state = state
     runs[index].reason = reason
+    runs[index].answer = state == .failed && !refused ? nil : answer
+    runs[index].refused = refused
     return true
   }
 
@@ -131,14 +141,18 @@ public struct RunBook: Sendable {
 /// the task and every write the run made is confirmed.
 public enum RunOutcome {
   public static func conclude(
-    modelEnded: Bool, writes: [(state: ActionState, reason: String?)]
+    modelEnded: Bool, writes: [(state: ActionState, reason: String?)], refused: Bool = false
   ) -> (state: RunState, reason: String?) {
     if let bad = writes.first(where: { $0.state != .confirmed }) {
       let why = bad.reason.map { ": \($0)" } ?? ""
       return (.failed, "a write ended \(bad.state.rawValue)\(why)")
     }
+    if refused { return (.failed, declined) }
     return modelEnded ? (.completed, nil) : (.failed, "the model did not finish the task")
   }
+
+  /// The reason of a run whose closing reply was a structured refusal.
+  public static let declined = "model declined the task"
 
   /// What a run's end may say in the log. Reasons can quote a verifier's or provider's free text,
   /// which can quote the page, so only these words go out.
@@ -147,8 +161,60 @@ public enum RunOutcome {
     let known = ["run-cap", "turn-limit", "taken-over", "stopped", "disconnected", "superseded"]
     if known.contains(reason) { return reason }
     if reason == AgentLoop.incompleteTurn { return "model-incomplete" }
+    if reason == declined { return "model-declined" }
     return reason.hasPrefix("a write ended") ? "write-not-confirmed" : "other"
   }
+
+  /// How the raw reasons of a failed run (the loop's own words, `ModelError`'s descriptions, the
+  /// outcome's) read to the person, first match wins. `tag` is a few words for the overview card,
+  /// which is 206 pt wide (the longest tag draws about 175 pt at 12 pt); `sentence` is for the
+  /// launcher row and the activity view. Both are fixed text: a provider's message can quote the
+  /// page, so none of it is carried over.
+  private static let causes: [(prefix: String, tag: String, sentence: String)] = [
+    ("run-cap", "spending limit", "The task reached its spending limit."),
+    ("model call refused: run-cap", "spending limit", "The task reached its spending limit."),
+    ("spend cap reached", "spending cap", "The overall spending cap is used up."),
+    ("turn-limit", "too many steps", "The task took too many steps without finishing."),
+    (AgentLoop.incompleteTurn, "reply cut off", "The model's reply was cut off."),
+    (declined, "declined", "The model declined to do this."),
+    (
+      "a write ended cancelled", "change not made",
+      "A change was not made: it was denied, or the page changed."
+    ),
+    ("a write ended failed", "change failed", "A change did not go through."),
+    ("a write ended", "unconfirmed", "The last change could not be confirmed."),
+    ("no model API key", "no key", "No model API key is set."),
+    ("model unreachable", "unreachable", "Could not reach the model. Check the connection."),
+    ("model timed out", "timed out", "The model took too long to answer."),
+    ("model server error", "server error", "The model had a problem on its side. Try again."),
+    (
+      "model rejected the request (401)", "not accepted",
+      "The model did not accept Photon's access. Check Model in Settings."
+    ),
+    (
+      "model rejected the request (403)", "not accepted",
+      "The model did not accept Photon's access. Check Model in Settings."
+    ),
+    (
+      "model rejected the request (402)", "usage limit",
+      "Usage limit reached. Try again later, or check Model in Settings."
+    ),
+    ("model rejected the request", "rejected", "The model rejected the request."),
+    ("malformed model response", "unreadable", "The model sent a reply that could not be read."),
+  ]
+
+  private static func cause(_ reason: String?) -> (tag: String, sentence: String)? {
+    reason.flatMap { reason in causes.first { reason.hasPrefix($0.prefix) } }
+      .map { ($0.tag, $0.sentence) }
+  }
+
+  /// What a failed run says about why, in plain words; any other reason gets the general line.
+  public static func plainReason(_ reason: String?) -> String {
+    cause(reason)?.sentence ?? "The task could not be finished."
+  }
+
+  /// The few words for the overview card; nil for a reason with no tag of its own.
+  public static func shortReason(_ reason: String?) -> String? { cause(reason)?.tag }
 }
 
 /// The per-run cap is $3 (`per_run_cap_usd` in the ledger). A run stops at $2.99, so no call
