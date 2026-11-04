@@ -4,11 +4,13 @@ Photon is a native macOS browser by Barestate. Your open pages sit on one canvas
 
 ![The overview canvas: six open pages as cards, with the trail between them](docs/screenshots/overview.png)
 
+The 70 s demo video, [docs/photon-demo.mp4](docs/photon-demo.mp4), and these screenshots were recorded on 2026-10-31, before the Full window, Maximize and zoom pill work described below. [DEMO.md](DEMO.md) says how to repeat the recording.
+
 Taking over the project? Start with [HANDOVER.md](HANDOVER.md): current state, repo map, build and release steps, model access, known issues.
 
 ## Benchmarks
 
-**[BENCH.md](BENCH.md) has every budget with its command, sample count and raw output.** Headline figures, measured on the release bundle (M4 Mac, macOS 27.0.1):
+**[BENCH.md](BENCH.md) has every budget with its command, sample count and raw output.** Headline figures, measured on the 2026-10-31 release bundle (CDHash `2478e79bfe7494c44284836b004177bac697b65b`; M4 Mac, macOS 27.0.1). v0.1.0 was refreshed after that for the Full window, mouse and Maximize work, and the cold-start and footprint rows were not re-run on the refreshed builds; BENCH.md says which build each number came from:
 
 - Launch to first paint, warm cache: p50 240.55 ms (budget 1500 ms).
 - One open page: Photon 199.4 MiB, Chrome 522.8 MiB (p50 of 5 runs each).
