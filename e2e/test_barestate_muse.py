@@ -22,7 +22,8 @@ GOOD_CODE = "e2e-good-code"
 DEVICE_TOKEN = "e2e-device-token-0123456789abcdef"
 LIMIT_MESSAGE = ("Barestate Muse daily limit reached for this device. Try again tomorrow, "
                  "or use your own model key in Settings.")
-RECOVERY = "Muse is unavailable. Web search still works."
+RECOVERY = ("No model key. Use Barestate Muse in Settings (⌘,). "
+            "Settings also lists where else a key can go.")
 
 
 class StubAPI(ThreadingHTTPServer):

@@ -4,7 +4,22 @@ import Foundation
 /// ranking task tagged with the generation that asked for them, so a slow answer to an older
 /// query can never replace newer rows or move the active row.
 public struct LauncherModel: Sendable {
-  public static let unavailableSubtitle = "Muse is unavailable. Web search still works."
+  /// What a disabled Start task row says: why Muse cannot be reached, and what to do about it.
+  public static func unavailableSubtitle(_ cause: MuseOutage) -> String {
+    switch cause {
+    case .noKey:
+      """
+      No model key. Use Barestate Muse in Settings (⌘,). \
+      Settings also lists where else a key can go.
+      """
+    case .offline: "No network connection. Reconnect and try again."
+    case .unreachable: "Muse cannot be reached. Web search still works."
+    }
+  }
+
+  private static let retrySubtitle = "Connect to Muse again"
+  /// Retry looked again and found Muse still down.
+  private static let recheckedSubtitle = "Checked again. Still unavailable."
 
   public private(set) var query = ""
   public private(set) var scope = LauncherScope.all
@@ -12,7 +27,10 @@ public struct LauncherModel: Sendable {
   public private(set) var appliedGeneration = 0
   public private(set) var rows: [LauncherRow] = []
   public private(set) var activeId: String?
-  public private(set) var taskUnavailable = false
+  /// Why Start task cannot run, if it cannot.
+  public private(set) var outage: MuseOutage?
+  /// Retry has looked again since the outage appeared and found it still there.
+  public private(set) var rechecked = false
   private var base: [LauncherRow] = []
   /// The query the current rows answer.
   public private(set) var rankedQuery: String?
@@ -20,6 +38,8 @@ public struct LauncherModel: Sendable {
   public init() {}
 
   public var isCurrent: Bool { appliedGeneration == generation }
+
+  public var taskUnavailable: Bool { outage != nil }
 
   public var activeRow: LauncherRow? {
     rows.first { $0.id == activeId }
@@ -72,18 +92,21 @@ public struct LauncherModel: Sendable {
     if rows.contains(where: { $0.id == id && $0.enabled }) { activeId = id }
   }
 
-  /// With no model to run it, Start task stays visible but cannot be chosen, and a typed request
-  /// gets a Retry row right after it.
-  public mutating func setTaskUnavailable(_ on: Bool) {
-    guard on != taskUnavailable else { return }
-    taskUnavailable = on
+  /// With no model to run it, Start task stays visible but cannot be chosen, says why, and a typed
+  /// request gets a Retry row right after it. `rechecked` is Retry reporting the same outage.
+  public mutating func setOutage(_ cause: MuseOutage?, rechecked: Bool = false) {
+    let rechecked = cause != nil && rechecked
+    guard cause != outage || rechecked != self.rechecked else { return }
+    outage = cause
+    self.rechecked = rechecked
     rebuild(keepActive: true)
   }
 
   /// A committed row consumes the query; anything else leaves it for the next open. A scope's
   /// query belongs to that scope and never outlives it.
   public mutating func close(committed: Bool) {
-    taskUnavailable = false
+    outage = nil
+    rechecked = false
     rebuild(keepActive: true)
     guard committed || scope != .all else { return }
     scope = .all
@@ -99,12 +122,12 @@ public struct LauncherModel: Sendable {
   private mutating func rebuild(keepActive: Bool) {
     rows = []
     for row in base {
-      guard taskUnavailable, row.kind == .startTask else {
+      guard let outage, row.kind == .startTask else {
         rows.append(row)
         continue
       }
       var disabled = row
-      disabled.subtitle = Self.unavailableSubtitle
+      disabled.subtitle = Self.unavailableSubtitle(outage)
       disabled.enabled = false
       rows.append(disabled)
       if row.section == LauncherRanking.requestSection, !rows.contains(where: { $0.kind == .retry })
@@ -112,7 +135,8 @@ public struct LauncherModel: Sendable {
         rows.append(
           LauncherRow(
             section: row.section, kind: .retry, title: "Retry",
-            subtitle: "Connect to Muse again", actionLabel: "Retry", target: ""))
+            subtitle: rechecked ? Self.recheckedSubtitle : Self.retrySubtitle,
+            actionLabel: "Retry", target: ""))
       }
     }
     if keepActive, let activeId, rows.contains(where: { $0.id == activeId && $0.enabled }) {
