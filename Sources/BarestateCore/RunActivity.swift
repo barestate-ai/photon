@@ -18,6 +18,11 @@ extension RunBook {
     guard let tab else { return [] }
     return runs.filter { $0.ownerTabId == tab }
   }
+
+  /// The runs still in progress on the page `run` belongs to: starting `run` leaves them behind.
+  public func superseded(by run: Run) -> [Run] {
+    runs(ownedBy: run.ownerTabId).filter { $0.id != run.id && $0.state.isInProgress }
+  }
 }
 
 /// What the run activity view shows for one run: a line per step the run took (the journal row of

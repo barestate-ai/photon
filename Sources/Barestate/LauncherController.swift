@@ -68,7 +68,7 @@ final class LauncherController {
     root.setCommandButtonCompact(true)
     app.refreshApproval(animated: false)
     _ = refreshState()
-    model.setTaskUnavailable(app.modelOffline)
+    model.setOutage(app.modelOffline ? .unreachable : nil)
     let generation = model.reopen()
     model.apply(rank(generation))
     view.setScope(model.scope)
@@ -261,28 +261,37 @@ final class LauncherController {
   }
 
   /// The recovery state is latched: Muse coming back does not clear it under the typist's hands,
-  /// only Retry does, and a Retry while Muse is still down changes nothing.
+  /// only Retry does, and a Retry that finds Muse still down only rewords the rows.
   func availabilityChanged() {
     if !app.modelOffline, !isOpen || !model.taskUnavailable { outageAnnounced = false }
     guard isOpen, app.modelOffline else { return }
-    model.setTaskUnavailable(true)
+    model.setOutage(.unreachable)
     render()
   }
 
   /// Start task found Muse unavailable: the same state as an outage announced while open.
-  private func showUnavailable() {
+  private func showUnavailable(_ cause: MuseOutage) {
     if !model.taskUnavailable { outageAnnounced = false }
-    model.setTaskUnavailable(true)
+    model.setOutage(cause)
     render()
   }
 
   /// Clears the state only when the app finds the key, the network and the provider all there.
+  /// Otherwise the rows name what it found now and say so; repeating it with the same finding
+  /// changes only what VoiceOver hears. The answer can take seconds: a launcher that closed, or
+  /// reopened clean, meanwhile is not in the recovery state and ignores it.
   private func retry() {
     guard !app.modelOffline else { return }
     Task {
-      guard await app.retryMuse(), isOpen else { return }
-      outageAnnounced = false
-      model.setTaskUnavailable(false)
+      let cause = await app.retryMuse()
+      guard isOpen, model.taskUnavailable else { return }
+      if let cause {
+        model.setOutage(cause, rechecked: true)
+        app.announce("Still unavailable. \(LauncherModel.unavailableSubtitle(cause))")
+      } else {
+        outageAnnounced = false
+        model.setOutage(nil)
+      }
       render()
     }
   }
@@ -296,7 +305,8 @@ final class LauncherController {
     guard let row = chosen, row.enabled else { return }
     switch row.kind {
     case .retry: return retry()
-    case .startTask where app.museOutage != nil: return showUnavailable()
+    case .startTask:
+      if let cause = app.museOutage { return showUnavailable(cause) }
     case .findWeb: return showScope(.web)
     case .command where row.target == BrowserCommand.history.rawValue: return showScope(.history)
     case .command where row.target == BrowserCommand.openPages.rawValue: return showScope(.pages)

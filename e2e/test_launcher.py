@@ -910,7 +910,7 @@ class ErrorStateTests(LauncherCase):
         task = next(r for r in state["rows"] if r["kind"] == "startTask")
         search = next(r for r in state["rows"] if r["kind"] == "search")
         self.assertEqual((task["enabled"], task["subtitle"], task["state"]),
-                         (False, "Muse is unavailable. Web search still works.", "disabled"))
+                         (False, "Muse cannot be reached. Web search still works.", "disabled"))
         self.assertEqual((state["active"], search["hint"], task["hint"]), (search["id"], True, False))
         self.assertFalse(state["footer"]["pageIncluded"])
         self.assertEqual(state["fieldText"], KYOTO)

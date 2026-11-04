@@ -84,16 +84,17 @@ extension AppController {
   }
 
   /// A client for one run's calls (the loop, grounding, acknowledgement and verification alike):
-  /// it refuses once the run has ended or reached its cap, and an outage it meets latches Muse
-  /// unavailable. `retrying` is the loop's first try, whose 5xx is tried once more before it
-  /// counts.
-  func modelClient(session: String, timeout: TimeInterval = 60, retrying: Bool = false)
-    -> ModelClient
-  {
+  /// it refuses once the run has ended or reached its cap. Only the run's own loop call
+  /// (`latches`) latches Muse unavailable when it meets an outage; a side call that fails says
+  /// little about Muse, and the loop's next call finds out. `retrying` is the loop's first try,
+  /// whose 5xx is tried once more before it counts.
+  func modelClient(
+    session: String, timeout: TimeInterval = 60, latches: Bool = false, retrying: Bool = false
+  ) -> ModelClient {
     // A failure the test override simulated stays simulated if it is lifted before the failure lands.
     let simulated = modelOffline
     return modelClient(timeout: timeout) { [weak self] error in
-      guard !simulated, error.isOutage, !(retrying && error.isTransient) else { return }
+      guard latches, !simulated, error.isOutage, !(retrying && error.isTransient) else { return }
       Task { @MainActor in self?.latchMuse(error) }
     }
     .labelled(session) { [weak self] in await self?.runs.refusal(session) }
@@ -113,19 +114,24 @@ extension AppController {
     settingsWindow?.refresh()
   }
 
-  /// Retry: true when the key, the network path and the provider's base URL all answer, which
-  /// clears the latch. The probe carries no key and no tokens, and any HTTP status is an answer.
-  func retryMuse() async -> Bool {
+  /// Retry: nil when the key, the network path and the provider's base URL all answer, which
+  /// clears the latch; otherwise what it found. The probe carries no key and no tokens, and any
+  /// HTTP status is an answer.
+  func retryMuse() async -> MuseOutage? {
     let client = modelClient()
-    let cause = await MuseAvailability.retry(
+    var cause = await MuseAvailability.retry(
       hasKey: client.hasKey, pathSatisfied: network.satisfied,
       probe: { await Self.reachable(client.probeURL) })
     Log.info(.runs, "muse retry cause=\(cause.map { "\($0)" } ?? "none")")
-    // The key or the path may have gone while the probe was out.
-    guard cause == nil, modelClient().hasKey, network.satisfied else { return false }
+    if cause == nil {
+      // The key or the path may have gone while the probe was out.
+      cause = MuseAvailability.cause(
+        hasKey: modelClient().hasKey, pathSatisfied: network.satisfied, latched: false)
+    }
+    guard cause == nil else { return cause }
     modelLatched = false
     settingsWindow?.refresh()
-    return true
+    return nil
   }
 
   private static func reachable(_ url: URL?) async -> Bool {

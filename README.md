@@ -4,11 +4,13 @@ Photon is a native macOS browser by Barestate. Your open pages sit on one canvas
 
 ![The overview canvas: six open pages as cards, with the trail between them](docs/screenshots/overview.png)
 
+The 70 s demo video, [docs/photon-demo.mp4](docs/photon-demo.mp4), and these screenshots were recorded on 2026-10-31, before the Full window, Maximize and zoom pill work described below. [DEMO.md](DEMO.md) says how to repeat the recording.
+
 Taking over the project? Start with [HANDOVER.md](HANDOVER.md): current state, repo map, build and release steps, model access, known issues.
 
 ## Benchmarks
 
-**[BENCH.md](BENCH.md) has every budget with its command, sample count and raw output.** Headline figures, measured on the release bundle (M4 Mac, macOS 27.0.1):
+**[BENCH.md](BENCH.md) has every budget with its command, sample count and raw output.** Headline figures, measured on the 2026-10-31 release bundle (CDHash `2478e79bfe7494c44284836b004177bac697b65b`; M4 Mac, macOS 27.0.1). v0.1.0 was refreshed after that for the Full window, mouse and Maximize work, and the cold-start and footprint rows were not re-run on the refreshed builds; BENCH.md says which build each number came from:
 
 - Launch to first paint, warm cache: p50 240.55 ms (budget 1500 ms).
 - One open page: Photon 199.4 MiB, Chrome 522.8 MiB (p50 of 5 runs each).
@@ -38,7 +40,7 @@ security add-generic-password -s meta-model-api -a "$USER" -w
 
 The command prompts for the key, so it never appears on a command line or in your shell history. Photon reads the Keychain item `meta-model-api`; macOS may ask you to allow it. Settings → Model names this too. Without a key the browser works and "Start task" explains why Muse is unavailable.
 
-Photon looks for the key in this order: `MODEL_API_KEY` in the environment, then in the `.env` file (the one named by `BARESTATE_ENV_FILE`, else `.env` in the working directory), then the Keychain. From a checkout, put `MODEL_API_KEY=...` in `.env` at the repo root (git ignores it).
+Photon looks for the key in this order: `MODEL_API_KEY` in the environment, then in the `.env` file (the one named by `BARESTATE_ENV_FILE`, else `.env` in the working directory), then the Keychain. From a checkout, run `cp -n env.example .env` (it keeps an existing `.env`) and set `MODEL_API_KEY=` in it at the repo root (git ignores it). The key must be named exactly `MODEL_API_KEY`; a name such as `MUSE_API_KEY` is ignored, so rename it if that is what your `.env` has.
 
 ## Barestate Muse (no key of your own)
 

@@ -492,7 +492,7 @@ final class Actions {
     keep(before, after, rowId: rowId)
     return await Verifier.verify(
       intent: intent, before: before, after: after,
-      client: controller.modelClient(session: session, timeout: 25))
+      client: controller.modelClient(session: session))
   }
 
   /// The pictures the model saw, for whoever has to explain a verdict.

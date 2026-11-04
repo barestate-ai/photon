@@ -101,32 +101,111 @@ struct LauncherModelTests {
   @Test func anUnavailableModelDisablesStartTaskAndOffersRetry() {
     var model = model(instruction)
     #expect(model.activeRow?.kind == .startTask)
-    model.setTaskUnavailable(true)
+    model.setOutage(.unreachable)
     #expect(model.rows.prefix(3).map(\.kind) == [.startTask, .retry, .search])
     #expect(model.rows[0].enabled == false)
-    #expect(model.rows[0].subtitle == "Muse is unavailable. Web search still works.")
+    #expect(model.rows[0].subtitle == "Muse cannot be reached. Web search still works.")
     #expect(model.activeRow?.kind == .search)
     model.moveActive(by: -1)
     #expect(model.activeRow?.kind == .retry)
     model.moveActive(by: -1)
     #expect(model.activeRow?.kind == .retry)
-    model.setTaskUnavailable(false)
+    model.setOutage(nil)
     #expect(model.rows.prefix(2).map(\.kind) == [.startTask, .search])
     #expect(!model.rows.contains { $0.kind == .retry })
     #expect(model.activeRow?.kind == .startTask)
   }
 
+  private static let noKeySubtitle =
+    "No model key. Use Barestate Muse in Settings (⌘,). Settings also lists where else a key can go."
+
+  @Test(
+    arguments: [
+      (MuseOutage.noKey, LauncherModelTests.noKeySubtitle),
+      (MuseOutage.offline, "No network connection. Reconnect and try again."),
+      (MuseOutage.unreachable, "Muse cannot be reached. Web search still works."),
+    ])
+  func startTaskNamesTheCause(cause: MuseOutage, subtitle: String) {
+    var model = model(instruction)
+    model.setOutage(cause)
+    #expect(model.outage == cause)
+    let task = model.rows.first { $0.kind == .startTask }
+    #expect(task?.subtitle == subtitle)
+    #expect(task?.enabled == false)
+    #expect(model.rows.contains { $0.kind == .retry })
+  }
+
+  @Test func everySuggestedTaskNamesTheCauseToo() {
+    var model = model("")
+    model.setOutage(.noKey)
+    let tasks = model.rows.filter { $0.kind == .startTask }
+    #expect(tasks.count == 2)
+    #expect(tasks.allSatisfy { $0.subtitle == Self.noKeySubtitle })
+  }
+
+  @Test func theNoKeyMessageLeadsWithTheRouteThatWorksInAnInstalledApp() {
+    var model = model(instruction)
+    model.setOutage(.noKey)
+    let subtitle = model.rows.first { $0.kind == .startTask }?.subtitle ?? ""
+    #expect(subtitle.hasPrefix("No model key. Use Barestate Muse in Settings (⌘,)."))
+  }
+
+  /// A Retry row exists only after the typed request, so the offline text must not send the
+  /// person to a button that an empty query never shows.
+  @Test func theOfflineMessageDoesNotNameARetryRowThatMayBeAbsent() {
+    #expect(!LauncherModel.unavailableSubtitle(.offline).contains("Retry"))
+  }
+
+  @Test func aNewCauseRewordsTheRowsAndKeepsTheChosenRow() {
+    var model = model(instruction)
+    model.setOutage(.noKey)
+    let active = model.activeId
+    model.setOutage(.offline)
+    #expect(model.rows.first { $0.kind == .startTask }?.subtitle.hasPrefix("No network") == true)
+    #expect(model.activeId == active)
+    #expect(model.rows.filter { $0.kind == .retry }.count == 1)
+  }
+
+  @Test func retryReportsThatItLookedAgain() {
+    var model = model(instruction)
+    model.setOutage(.noKey)
+    #expect(model.rows.first { $0.kind == .retry }?.subtitle == "Connect to Muse again")
+    model.setOutage(.noKey, rechecked: true)
+    #expect(model.rechecked)
+    #expect(model.rows.first { $0.kind == .retry }?.subtitle == "Checked again. Still unavailable.")
+    #expect(model.rows.first { $0.kind == .startTask }?.subtitle == Self.noKeySubtitle)
+    // A different finding is worded fresh and still says it was checked.
+    model.setOutage(.offline, rechecked: true)
+    #expect(model.rows.first { $0.kind == .startTask }?.subtitle.hasPrefix("No network") == true)
+    #expect(model.rows.first { $0.kind == .retry }?.subtitle == "Checked again. Still unavailable.")
+  }
+
+  @Test func clearingOrClosingForgetsTheCauseAndTheRecheck() {
+    var model = model(instruction)
+    model.setOutage(.noKey, rechecked: true)
+    model.setOutage(nil, rechecked: true)
+    #expect(model.outage == nil)
+    #expect(!model.rechecked)
+    #expect(model.rows.first { $0.kind == .startTask }?.enabled == true)
+    model.setOutage(.noKey, rechecked: true)
+    model.close(committed: false)
+    #expect(model.outage == nil)
+    #expect(!model.rechecked)
+    model.setOutage(.noKey)
+    #expect(model.rows.first { $0.kind == .retry }?.subtitle == "Connect to Muse again")
+  }
+
   @Test func recoveringKeepsAChosenSearchRow() {
     var model = model(instruction)
-    model.setTaskUnavailable(true)
+    model.setOutage(.unreachable)
     #expect(model.activeRow?.kind == .search)
-    model.setTaskUnavailable(false)
+    model.setOutage(nil)
     #expect(model.activeRow?.kind == .search)
   }
 
   @Test func rowsRankedAfterTheErrorStayDisabled() {
     var model = LauncherModel()
-    model.setTaskUnavailable(true)
+    model.setOutage(.unreachable)
     let generation = model.setQuery("kyoto hotels")
     _ = model.apply(
       LauncherRanking.rank(query: "kyoto hotels", snapshot: data, generation: generation))
@@ -137,7 +216,7 @@ struct LauncherModelTests {
 
   @Test func theSuggestionsAreDisabledWithoutRetryOnAnEmptyQuery() {
     var model = model("")
-    model.setTaskUnavailable(true)
+    model.setOutage(.unreachable)
     let tasks = model.rows.filter { $0.kind == .startTask }
     #expect(tasks.count == 2)
     #expect(tasks.allSatisfy { !$0.enabled })
@@ -156,7 +235,7 @@ struct LauncherModelTests {
 
   @Test func closingClearsTheErrorSoReopeningStartsClean() {
     var model = model("kyoto hotels")
-    model.setTaskUnavailable(true)
+    model.setOutage(.unreachable)
     model.close(committed: false)
     #expect(!model.taskUnavailable)
   }

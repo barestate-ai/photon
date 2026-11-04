@@ -10,7 +10,12 @@ from test_launcher import KYOTO, LauncherCase
 from test_run import ENDED
 
 ANNOUNCEMENT = "Unable to connect to Muse"
-MESSAGE = "Muse is unavailable. Web search still works."
+MESSAGES = {
+    "noKey": ("No model key. Use Barestate Muse in Settings (⌘,). "
+              "Settings also lists where else a key can go."),
+    "offline": "No network connection. Reconnect and try again.",
+    "unreachable": "Muse cannot be reached. Web search still works.",
+}
 
 
 class AvailabilityCase(LauncherCase):
@@ -42,15 +47,15 @@ class AvailabilityCase(LauncherCase):
         self.assertEqual((task["enabled"], state["active"]), (True, task["id"]))
         self.key("Return")
 
-    def assert_recovery(self, runs):
-        """The recovery state of VAL-TASK-008 over the request the person typed."""
+    def assert_recovery(self, runs, cause):
+        """The recovery state of VAL-TASK-008 over the request the person typed, naming `cause`."""
         state = bs.wait_until(lambda: (lambda s: s if s["error"] else None)(self.launcher()),
                               what="the recovery state")
         task = next(r for r in state["rows"] if r["kind"] == "startTask")
         search = next(r for r in state["rows"] if r["kind"] == "search")
         self.assertTrue(state["open"])
         self.assertEqual((state["fieldText"], state["query"]), (KYOTO, KYOTO))
-        self.assertEqual((task["enabled"], task["subtitle"]), (False, MESSAGE))
+        self.assertEqual((task["enabled"], task["subtitle"]), (False, MESSAGES[cause]))
         self.assertEqual((state["active"], search["hint"]), (search["id"], True))
         self.assertTrue(any(r["kind"] == "retry" for r in state["rows"]))
         self.assertEqual(self.runs(), runs)
@@ -62,6 +67,16 @@ class AvailabilityCase(LauncherCase):
         self.call("test.click", {"target": f"launcherRow:{row['id']}"})
         bs.wait_until(lambda: self.log_text().count(f"muse retry cause={cause}") == seen + 1,
                       what=f"Retry to find cause={cause}")
+
+    def assert_rechecked(self, cause):
+        """A Retry that finds Muse still down says it looked again, on screen and to VoiceOver."""
+        row = bs.wait_until(lambda: next((r for r in self.launcher()["rows"]
+                                          if r["kind"] == "retry"
+                                          and r["subtitle"] == "Checked again. Still unavailable."),
+                                         None), what="Retry to say it checked again")
+        self.assertTrue(row["enabled"])
+        self.assertIn(f"Still unavailable. {MESSAGES[cause]}",
+                      self.call("test.announcements")["announcements"])
 
     def assert_cleared(self):
         state = bs.wait_until(lambda: (lambda s: s if not s["error"] and s["current"] else None)(
@@ -83,10 +98,11 @@ class NoKeyTests(AvailabilityCase):
         self.call("test.announcements", {"reset": True})
         self.assertEqual(self.settings_model(), "Unavailable")
         self.start_with_text()
-        self.assert_recovery(runs)
+        self.assert_recovery(runs, "noKey")
         self.retry("noKey")
         self.retry("noKey")
-        self.assert_recovery(runs)
+        self.assert_recovery(runs, "noKey")
+        self.assert_rechecked("noKey")
         self.assertEqual(self.announcements(), 1)
         self.assertEqual((self.provider.requests, self.spend()), ([], before))
 
@@ -120,10 +136,11 @@ class UnreachableTests(AvailabilityCase):
         runs = self.runs()
         self.call("test.announcements", {"reset": True})
         self.start_with_text()
-        self.assert_recovery(runs)
+        self.assert_recovery(runs, "unreachable")
         self.assertEqual(self.announcements(), 1)
         self.retry("unreachable")
-        self.assert_recovery(runs)
+        self.assert_recovery(runs, "unreachable")
+        self.assert_rechecked("unreachable")
 
         self.late.start()
         self.retry("none")
@@ -145,9 +162,10 @@ class NetworkPathTests(AvailabilityCase):
         self.addCleanup(self.call, "test.networkPath", {"satisfied": True})
         self.assertEqual(self.settings_model(), "Unavailable")
         self.start_with_text()
-        self.assert_recovery(runs)
+        self.assert_recovery(runs, "offline")
         self.retry("offline")
-        self.assert_recovery(runs)
+        self.assert_recovery(runs, "offline")
+        self.assert_rechecked("offline")
         self.assertEqual(self.provider.requests, [])
         self.call("test.networkPath", {"satisfied": True})
         self.retry("none")
