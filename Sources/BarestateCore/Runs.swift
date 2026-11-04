@@ -144,7 +144,7 @@ public enum RunOutcome {
   /// which can quote the page, so only these words go out.
   public static func logCategory(_ reason: String?) -> String {
     guard let reason else { return "-" }
-    let known = ["run-cap", "turn-limit", "taken-over", "stopped", "disconnected"]
+    let known = ["run-cap", "turn-limit", "taken-over", "stopped", "disconnected", "superseded"]
     if known.contains(reason) { return reason }
     if reason == AgentLoop.incompleteTurn { return "model-incomplete" }
     return reason.hasPrefix("a write ended") ? "write-not-confirmed" : "other"

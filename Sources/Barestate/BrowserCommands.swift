@@ -254,7 +254,7 @@ extension AppController {
       }
     case .zoomToFit: root?.canvasView?.zoomToFit()
     case .stopRun:
-      if let run = commandContext().activeRun { _ = try? runs.stop(run.id) }
+      for run in runs.runs where run.state.isInProgress { _ = try? runs.stop(run.id) }
     case .showRunActivity: activity.open()
     case .disconnectPhone: events.disconnectAll()
     }

@@ -84,16 +84,17 @@ extension AppController {
   }
 
   /// A client for one run's calls (the loop, grounding, acknowledgement and verification alike):
-  /// it refuses once the run has ended or reached its cap, and an outage it meets latches Muse
-  /// unavailable. `retrying` is the loop's first try, whose 5xx is tried once more before it
-  /// counts.
-  func modelClient(session: String, timeout: TimeInterval = 60, retrying: Bool = false)
-    -> ModelClient
-  {
+  /// it refuses once the run has ended or reached its cap. Only the run's own loop call
+  /// (`latches`) latches Muse unavailable when it meets an outage; a side call that fails says
+  /// little about Muse, and the loop's next call finds out. `retrying` is the loop's first try,
+  /// whose 5xx is tried once more before it counts.
+  func modelClient(
+    session: String, timeout: TimeInterval = 60, latches: Bool = false, retrying: Bool = false
+  ) -> ModelClient {
     // A failure the test override simulated stays simulated if it is lifted before the failure lands.
     let simulated = modelOffline
     return modelClient(timeout: timeout) { [weak self] error in
-      guard !simulated, error.isOutage, !(retrying && error.isTransient) else { return }
+      guard latches, !simulated, error.isOutage, !(retrying && error.isTransient) else { return }
       Task { @MainActor in self?.latchMuse(error) }
     }
     .labelled(session) { [weak self] in await self?.runs.refusal(session) }

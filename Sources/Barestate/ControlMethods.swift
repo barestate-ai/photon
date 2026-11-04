@@ -25,8 +25,10 @@ func registerControlMethods(_ dispatcher: RPCDispatcher, controller: AppControll
     } else {
       fields["state"] = "pending"
       let page = tab.title.isEmpty ? tab.url : tab.title
+      // A run's session is an internal id; the card says who it is, and the item keeps the id.
+      let who = controller.runs.sessionRun(session) == nil ? session : "Muse"
       let id = approvals.openControl(
-        tabId: tab.id, sessionId: session, text: "Let \(session) control \"\(page)\"",
+        tabId: tab.id, sessionId: session, text: "Let \(who) control \"\(page)\"",
         epoch: tab.control.epoch)
       fields["requestId"] = .string(id)
       fields["approvalId"] = .string(id)

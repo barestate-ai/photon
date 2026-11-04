@@ -104,7 +104,7 @@ struct RunOutcomeTests {
     #expect(RunOutcome.logCategory(nil) == "-")
     #expect(RunOutcome.logCategory("a write ended failed: \(secret)") == "write-not-confirmed")
     #expect(RunOutcome.logCategory("model response incomplete") == "model-incomplete")
-    for fixed in ["run-cap", "turn-limit", "taken-over", "stopped"] {
+    for fixed in ["run-cap", "turn-limit", "taken-over", "stopped", "superseded"] {
       #expect(RunOutcome.logCategory(fixed) == fixed)
     }
   }

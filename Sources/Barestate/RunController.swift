@@ -42,12 +42,17 @@ final class RunController {
 
   func session(_ id: String) -> String { "\(id).\(launch)" }
 
+  /// The run a session belongs to; a session that is not a run's belongs to a client outside.
+  func sessionRun(_ session: String) -> Run? { book.runs.first { self.session($0.id) == session } }
+
   func start(prompt: String, origin: RunOrigin, tabId: String?, remoteSession: String? = nil)
     -> Run?
   {
     guard let run = book.start(prompt: prompt, origin: origin, ownerTabId: tabId) else {
       return nil
     }
+    // A page has one task at a time: a task already working on it would only fail its acts.
+    for old in book.superseded(by: run) { end(old.id, .stopped, reason: "superseded") }
     remoteSessions[run.id] = remoteSession
     seeds[run.id] = nextRunSeedUSD
     nextRunSeedUSD = 0
@@ -170,12 +175,13 @@ final class RunController {
         }
         let response: ModelResponse
         do {
-          response = try await app.modelClient(session: session, retrying: true)
+          response = try await app.modelClient(session: session, latches: true, retrying: true)
             .call(request, source: "loop")
         } catch let error as ModelError where error.isTransient {
           // A provider hiccup is not the task's failure; one more try, and nothing was billed.
           try await Task.sleep(for: .seconds(1))
-          response = try await app.modelClient(session: session).call(request, source: "loop")
+          response = try await app.modelClient(session: session, latches: true)
+            .call(request, source: "loop")
         }
         self.advance(id, to: .running)
         return response
@@ -197,7 +203,7 @@ final class RunController {
   /// Why a model call of this session must not go out, if it must not: the run it belongs to has
   /// ended or is at its cap. Sessions that are not a run's are never refused.
   func refusal(_ session: String) -> ModelError? {
-    guard let run = book.runs.first(where: { self.session($0.id) == session }) else { return nil }
+    guard let run = sessionRun(session) else { return nil }
     if !run.state.isInProgress { return .refused("run ended") }
     return withinCap(run.id) ? nil : .refused("run-cap")
   }
@@ -326,7 +332,10 @@ final class RunController {
     guard result["state"]?.string == "pending", let approval = result["approvalId"]?.string,
       let tab = try? app?.resolveTab(.object(request))
     else { return result.serialized() }
+    // The run waits for the person, and says so, until the card is decided.
+    let waiting = advance(id, to: .waitingApproval)
     await wait(id) { self.app?.approvals.item(approval) != nil }
+    if waiting { advance(id, to: .running) }
     var fields = result.object ?? [:]
     fields["state"] = tab.control.controller == .agent(session(id)) ? "granted" : "denied"
     result = .object(fields)
