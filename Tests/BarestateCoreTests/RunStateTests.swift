@@ -143,7 +143,8 @@ struct RunOutcomeTests {
     }
     #expect(RunOutcome.plainReason("run-cap") == "The task reached its spending limit.")
     #expect(RunOutcome.shortReason("run-cap") == "spending limit")
-    #expect(RunOutcome.plainReason("turn-limit") == "The task took too many steps without finishing.")
+    #expect(
+      RunOutcome.plainReason("turn-limit") == "The task took too many steps without finishing.")
     #expect(RunOutcome.plainReason("\(ModelError.timeout)") == "The model took too long to answer.")
     #expect(RunOutcome.shortReason(nil) == nil && RunOutcome.shortReason("needs-human") == nil)
   }
@@ -157,7 +158,8 @@ struct RunOutcomeTests {
       RunOutcome.plainReason(revoked)
         == "The model did not accept Photon's access. Check Model in Settings.")
     #expect(
-      RunOutcome.plainReason(limit) == "Usage limit reached. Try again later, or check Model in Settings.")
+      RunOutcome.plainReason(limit)
+        == "Usage limit reached. Try again later, or check Model in Settings.")
     #expect(RunOutcome.shortReason(limit) == "usage limit")
     #expect(RunOutcome.plainReason(limit) != RunOutcome.plainReason(revoked))
     for sentence in [RunOutcome.plainReason(revoked), RunOutcome.plainReason(limit)] {
@@ -172,7 +174,8 @@ struct RunOutcomeTests {
       return end.state == .failed ? RunOutcome.plainReason(end.reason) : nil
     }
     #expect(
-      sentence(.cancelled, "denied") == "A change was not made: it was denied, or the page changed.")
+      sentence(.cancelled, "denied") == "A change was not made: it was denied, or the page changed."
+    )
     #expect(sentence(.cancelled, "stale: epoch") == sentence(.cancelled, "denied"))
     #expect(sentence(.failed, "needs-human") == "A change did not go through.")
     #expect(sentence(.outcomeUnknown, "denied") == "The last change could not be confirmed.")
